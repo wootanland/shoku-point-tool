@@ -82,13 +82,21 @@
 </div>
 
 <script>
-const STORAGE_KEY = 'shokuPointToolData_v1';
+const STORAGE_PREFIX = 'shokuPoint:';
 
 function loadData(){
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e){ return {}; }
-}
-function saveData(d){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+  const result = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(STORAGE_PREFIX) === 0) {
+        try {
+          result[k.slice(STORAGE_PREFIX.length)] = JSON.parse(localStorage.getItem(k));
+        } catch(e){ /* skip broken entry */ }
+      }
+    }
+  } catch(e){}
+  return result;
 }
 
 function upsertFromHash(){
@@ -97,10 +105,9 @@ function upsertFromHash(){
   if(!m) return false;
   try {
     const payload = JSON.parse(decodeURIComponent(m[1]));
-    const data = loadData();
     const key = (payload.hallName||'') + '|' + (payload.daiban||'');
-    data[key] = payload;
-    saveData(data);
+    // 台ごとに個別のキーへ書き込む(他の台の書き込みと競合しない)
+    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(payload));
     history.replaceState(null, '', location.pathname + location.search);
     return true;
   } catch(e){
@@ -184,7 +191,12 @@ document.getElementById('modalOverlay').addEventListener('click', (e) => {
 
 document.getElementById('resetBtn').addEventListener('click', () => {
   if(confirm('保存されているすべてのデータを削除します。よろしいですか？')){
-    localStorage.removeItem(STORAGE_KEY);
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(STORAGE_PREFIX) === 0) toRemove.push(k);
+    }
+    toRemove.forEach(k => localStorage.removeItem(k));
     render();
   }
 });
@@ -209,7 +221,7 @@ window.addEventListener('hashchange', () => {
   render();
 });
 window.addEventListener('storage', (e) => {
-  if(e.key === STORAGE_KEY) render();
+  if(e.key && e.key.indexOf(STORAGE_PREFIX) === 0) render();
 });
 
 upsertFromHash();
