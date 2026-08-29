@@ -17,9 +17,12 @@
   }
   * { box-sizing: border-box; }
   body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; background:var(--bg); color:var(--text); }
-  header { background:#1a1a2e; color:#fff; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; }
+  header { background:#1a1a2e; color:#fff; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; gap:8px; flex-wrap:wrap; }
   header h1 { font-size:16px; margin:0; }
-  header button { background:#c0392b; color:#fff; border:none; border-radius:6px; padding:8px 12px; font-size:13px; }
+  header .btns { display:flex; gap:8px; }
+  header button { border:none; border-radius:6px; padding:8px 12px; font-size:13px; }
+  #refreshBtn { background:#2563eb; color:#fff; }
+  #resetBtn { background:#c0392b; color:#fff; }
   .toolbar { display:flex; gap:8px; padding:10px 16px; flex-wrap:wrap; background:#fff; border-bottom:1px solid var(--border); }
   .toolbar button { background:#eee; border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:12px; }
   .toolbar button.active { background:#333; color:#fff; }
@@ -28,7 +31,7 @@
   table.list th { background:#333; color:#fff; font-size:12px; }
   table.list tbody tr:active { background:#f0f0f0; }
   .daiban-link { color:#1a56db; font-weight:bold; text-decoration:underline; }
-  .empty { padding:40px; text-align:center; color:var(--muted); }
+  .empty, .loading { padding:40px; text-align:center; color:var(--muted); }
 
   .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:16px; z-index:1000; }
   .modal-overlay.show { display:flex; }
@@ -47,14 +50,16 @@
   .badge { display:inline-block; padding:2px 10px; border-radius:999px; color:#fff; font-weight:bold; font-size:12px; }
   .badge.art { background:var(--art-color); }
   .badge.rb { background:var(--rb-color); }
-  .sep-row td { background:#ddd; padding:2px; }
   .detail-scroll { max-height:60vh; overflow-y:auto; }
 </style>
 </head>
 <body>
 <header>
   <h1>喰ポイント管理ツール</h1>
-  <button id="resetBtn">リセット</button>
+  <div class="btns">
+    <button id="refreshBtn">更新</button>
+    <button id="resetBtn">リセット</button>
+  </div>
 </header>
 <div class="toolbar">
   <button data-sort="daiban" class="active">台番順</button>
@@ -62,7 +67,8 @@
   <button data-sort="updated">最終更新順</button>
 </div>
 <div id="listWrap">
-  <table class="list">
+  <div id="loadingMsg" class="loading">読み込み中...</div>
+  <table class="list" id="listTable" style="display:none;">
     <thead><tr><th>台番</th><th>喰pt</th><th>最終更新</th><th>ホール名</th></tr></thead>
     <tbody id="listBody"></tbody>
   </table>
@@ -82,59 +88,72 @@
 </div>
 
 <script>
-const STORAGE_PREFIX = 'shokuPoint:';
+// ▼▼▼ ここにApps ScriptのウェブアプリURLを入れてください ▼▼▼
+const API_URL = 'https://script.google.com/macros/s/AKfycbyLPgRPkHY932M2JleXKsKJ5TZKdOMBUJuOh6AwyvXTd4AssaA--zBxvr4sc_QjBNd1/exec';
+// ▲▲▲ ここにApps ScriptのウェブアプリURLを入れてください ▲▲▲
 
-function loadData(){
-  const result = {};
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.indexOf(STORAGE_PREFIX) === 0) {
-        try {
-          result[k.slice(STORAGE_PREFIX.length)] = JSON.parse(localStorage.getItem(k));
-        } catch(e){ /* skip broken entry */ }
-      }
-    }
-  } catch(e){}
-  return result;
+function jsonp(url, params, callback){
+  const cbName = 'jsonp_cb_' + Math.random().toString(36).slice(2);
+  const script = document.createElement('script');
+  let done = false;
+  window[cbName] = function(data){
+    if(done) return;
+    done = true;
+    delete window[cbName];
+    if(script.parentNode) script.parentNode.removeChild(script);
+    callback(null, data);
+  };
+  script.onerror = function(){
+    if(done) return;
+    done = true;
+    delete window[cbName];
+    if(script.parentNode) script.parentNode.removeChild(script);
+    callback(new Error('load failed'));
+  };
+  const qs = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+  script.src = url + '?' + qs + '&callback=' + cbName;
+  document.body.appendChild(script);
+  setTimeout(function(){
+    if(!done){ done = true; delete window[cbName]; if(script.parentNode) script.parentNode.removeChild(script); callback(new Error('timeout')); }
+  }, 10000);
 }
 
-function upsertFromHash(){
-  if(!location.hash || location.hash.length < 3) return false;
-  const m = location.hash.match(/^#d=(.+)$/);
-  if(!m) return false;
-  try {
-    const payload = JSON.parse(decodeURIComponent(m[1]));
-    const key = (payload.hallName||'') + '|' + (payload.daiban||'');
-    // 台ごとに個別のキーへ書き込む(他の台の書き込みと競合しない)
-    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(payload));
-    history.replaceState(null, '', location.pathname + location.search);
-    return true;
-  } catch(e){
-    console.error('hash parse error', e);
-    return false;
-  }
-}
-
+let entries = [];
 let currentSort = 'daiban';
 let sortDir = 1;
 
+function fetchList(){
+  document.getElementById('loadingMsg').style.display = 'block';
+  document.getElementById('listTable').style.display = 'none';
+  document.getElementById('emptyMsg').style.display = 'none';
+  jsonp(API_URL, {action:'list'}, function(err, data){
+    document.getElementById('loadingMsg').style.display = 'none';
+    if(err){
+      document.getElementById('emptyMsg').style.display = 'block';
+      document.getElementById('emptyMsg').textContent = '読み込みに失敗しました: ' + err.message;
+      return;
+    }
+    entries = Array.isArray(data) ? data : [];
+    render();
+  });
+}
+
 function render(){
-  const data = loadData();
-  const entries = Object.values(data);
   const listBody = document.getElementById('listBody');
   const emptyMsg = document.getElementById('emptyMsg');
+  const listTable = document.getElementById('listTable');
   listBody.innerHTML = '';
 
   if(entries.length === 0){
     emptyMsg.style.display = 'block';
-    document.querySelector('table.list').style.display = 'none';
+    emptyMsg.textContent = 'まだデータがありません。サイトセブンの大当り履歴ページでブックマークレットを実行してください。';
+    listTable.style.display = 'none';
     return;
   }
   emptyMsg.style.display = 'none';
-  document.querySelector('table.list').style.display = 'table';
+  listTable.style.display = 'table';
 
-  entries.sort((a,b) => {
+  const sorted = entries.slice().sort((a,b) => {
     if(currentSort === 'daiban'){
       return (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0);
     } else if(currentSort === 'hall'){
@@ -147,7 +166,7 @@ function render(){
     return 0;
   });
 
-  entries.forEach(entry => {
+  sorted.forEach(entry => {
     const tr = document.createElement('tr');
     const dt = entry.updatedAt ? new Date(entry.updatedAt) : null;
     const dtStr = dt ? (dt.getMonth()+1)+'/'+dt.getDate()+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0') : '-';
@@ -189,15 +208,14 @@ document.getElementById('modalOverlay').addEventListener('click', (e) => {
   if(e.target.id === 'modalOverlay') document.getElementById('modalOverlay').classList.remove('show');
 });
 
+document.getElementById('refreshBtn').addEventListener('click', fetchList);
+
 document.getElementById('resetBtn').addEventListener('click', () => {
-  if(confirm('保存されているすべてのデータを削除します。よろしいですか？')){
-    const toRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.indexOf(STORAGE_PREFIX) === 0) toRemove.push(k);
-    }
-    toRemove.forEach(k => localStorage.removeItem(k));
-    render();
+  if(confirm('サーバー上の全データを削除します。よろしいですか？')){
+    jsonp(API_URL, {action:'reset'}, function(err){
+      if(err){ alert('削除に失敗しました: ' + err.message); return; }
+      fetchList();
+    });
   }
 });
 
@@ -216,16 +234,7 @@ document.querySelectorAll('.toolbar button[data-sort]').forEach(btn => {
   });
 });
 
-window.addEventListener('hashchange', () => {
-  upsertFromHash();
-  render();
-});
-window.addEventListener('storage', (e) => {
-  if(e.key && e.key.indexOf(STORAGE_PREFIX) === 0) render();
-});
-
-upsertFromHash();
-render();
+fetchList();
 </script>
 </body>
 </html>
