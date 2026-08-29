@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>喰ポイント管理ツール</title>
+<style>
+  :root {
+    --art-color: #7c3aed;
+    --rb-color: #2979ff;
+    --orange: #f5820d;
+    --bg: #f5f6fa;
+    --card: #ffffff;
+    --border: #e0e0e0;
+    --text: #222;
+    --muted: #777;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; background:var(--bg); color:var(--text); }
+  header { background:#1a1a2e; color:#fff; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; }
+  header h1 { font-size:16px; margin:0; }
+  header button { background:#c0392b; color:#fff; border:none; border-radius:6px; padding:8px 12px; font-size:13px; }
+  .toolbar { display:flex; gap:8px; padding:10px 16px; flex-wrap:wrap; background:#fff; border-bottom:1px solid var(--border); }
+  .toolbar button { background:#eee; border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:12px; }
+  .toolbar button.active { background:#333; color:#fff; }
+  table.list { width:100%; border-collapse:collapse; background:#fff; }
+  table.list th, table.list td { padding:10px 8px; text-align:center; border-bottom:1px solid var(--border); font-size:14px; }
+  table.list th { background:#333; color:#fff; font-size:12px; }
+  table.list tbody tr:active { background:#f0f0f0; }
+  .daiban-link { color:#1a56db; font-weight:bold; text-decoration:underline; }
+  .empty { padding:40px; text-align:center; color:var(--muted); }
+
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:16px; z-index:1000; }
+  .modal-overlay.show { display:flex; }
+  .modal { background:#fff; border-radius:10px; max-width:520px; width:100%; overflow:hidden; margin-top:20px; }
+  .modal-header { background:var(--orange); color:#fff; padding:14px; font-weight:bold; text-align:center; }
+  .modal-sub { padding:10px 14px; font-size:13px; color:#333; border-bottom:1px solid var(--border); }
+  .modal-close { text-align:right; padding:8px 12px; background:#fff; }
+  .modal-close button { background:#333; color:#fff; border:none; border-radius:6px; padding:6px 12px; }
+  .pt-summary { display:flex; gap:10px; padding:12px 14px; flex-wrap:wrap; }
+  .pt-summary .box { flex:1; min-width:90px; background:#f5f6fa; border-radius:8px; padding:8px; text-align:center; }
+  .pt-summary .box .label { font-size:11px; color:var(--muted); }
+  .pt-summary .box .val { font-size:18px; font-weight:bold; }
+  table.detail { width:100%; border-collapse:collapse; }
+  table.detail th, table.detail td { padding:6px 4px; text-align:center; border-bottom:1px solid var(--border); font-size:12px; }
+  table.detail th { background:#eee; position:sticky; top:0; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:999px; color:#fff; font-weight:bold; font-size:12px; }
+  .badge.art { background:var(--art-color); }
+  .badge.rb { background:var(--rb-color); }
+  .sep-row td { background:#ddd; padding:2px; }
+  .detail-scroll { max-height:60vh; overflow-y:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>喰ポイント管理ツール</h1>
+  <button id="resetBtn">リセット</button>
+</header>
+<div class="toolbar">
+  <button data-sort="daiban" class="active">台番順</button>
+  <button data-sort="hall">ホールごと</button>
+  <button data-sort="updated">最終更新順</button>
+</div>
+<div id="listWrap">
+  <table class="list">
+    <thead><tr><th>台番</th><th>喰pt</th><th>最終更新</th><th>ホール名</th></tr></thead>
+    <tbody id="listBody"></tbody>
+  </table>
+  <div id="emptyMsg" class="empty" style="display:none;">まだデータがありません。<br>サイトセブンの大当り履歴ページでブックマークレットを実行してください。</div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-close"><button id="closeBtn">閉じる</button></div>
+    <div class="modal-header" id="modalTitle"></div>
+    <div class="modal-sub" id="modalSub"></div>
+    <div class="pt-summary" id="modalSummary"></div>
+    <div class="detail-scroll">
+      <table class="detail" id="modalTable"></table>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'shokuPointToolData_v1';
+
+function loadData(){
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e){ return {}; }
+}
+function saveData(d){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+}
+
+function upsertFromHash(){
+  if(!location.hash || location.hash.length < 3) return false;
+  const m = location.hash.match(/^#d=(.+)$/);
+  if(!m) return false;
+  try {
+    const payload = JSON.parse(decodeURIComponent(m[1]));
+    const data = loadData();
+    const key = (payload.hallName||'') + '|' + (payload.daiban||'');
+    data[key] = payload;
+    saveData(data);
+    history.replaceState(null, '', location.pathname + location.search);
+    return true;
+  } catch(e){
+    console.error('hash parse error', e);
+    return false;
+  }
+}
+
+let currentSort = 'daiban';
+let sortDir = 1;
+
+function render(){
+  const data = loadData();
+  const entries = Object.values(data);
+  const listBody = document.getElementById('listBody');
+  const emptyMsg = document.getElementById('emptyMsg');
+  listBody.innerHTML = '';
+
+  if(entries.length === 0){
+    emptyMsg.style.display = 'block';
+    document.querySelector('table.list').style.display = 'none';
+    return;
+  }
+  emptyMsg.style.display = 'none';
+  document.querySelector('table.list').style.display = 'table';
+
+  entries.sort((a,b) => {
+    if(currentSort === 'daiban'){
+      return (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0);
+    } else if(currentSort === 'hall'){
+      const h = (a.hallName||'').localeCompare(b.hallName||'');
+      if(h !== 0) return h;
+      return (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0);
+    } else if(currentSort === 'updated'){
+      return sortDir * (new Date(a.updatedAt||0) - new Date(b.updatedAt||0));
+    }
+    return 0;
+  });
+
+  entries.forEach(entry => {
+    const tr = document.createElement('tr');
+    const dt = entry.updatedAt ? new Date(entry.updatedAt) : null;
+    const dtStr = dt ? (dt.getMonth()+1)+'/'+dt.getDate()+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0') : '-';
+    tr.innerHTML = '<td><span class="daiban-link">'+(entry.daiban||'-')+'</span></td>'+
+      '<td>'+(entry.currentPT!=null?entry.currentPT:'-')+'pt</td>'+
+      '<td>'+dtStr+'</td>'+
+      '<td>'+(entry.hallName||'-')+'</td>';
+    tr.addEventListener('click', () => openDetail(entry));
+    listBody.appendChild(tr);
+  });
+}
+
+function openDetail(entry){
+  document.getElementById('modalTitle').textContent = (entry.modelName||'') + '｜' + entry.daiban + '番台';
+  document.getElementById('modalSub').textContent = (entry.hallName||'') + '（' + (entry.prefecture||'') + (entry.city||'') + '） ／ 対象日: ' + (entry.day||'-');
+
+  const summary = document.getElementById('modalSummary');
+  summary.innerHTML =
+    '<div class="box"><div class="label">現在の喰ポイント</div><div class="val">'+entry.currentPT+'pt</div></div>'+
+    '<div class="box"><div class="label">現在経過ゲーム</div><div class="val">'+entry.currentElapsed+'G</div></div>';
+
+  const table = document.getElementById('modalTable');
+  let html = '<thead><tr><th>回数</th><th>種類</th><th>G</th><th>獲得</th><th>PT</th><th>累計</th></tr></thead><tbody>';
+  let prevKind = null;
+  (entry.rows||[]).forEach(r => {
+    if(prevKind !== null && r.kind !== prevKind){
+      html += '<tr class="sep-row"><td colspan="6"></td></tr>';
+    }
+    const badgeClass = r.kind === 'ART' ? 'art' : 'rb';
+    html += '<tr><td>'+(r.cnt||'-')+'</td><td><span class="badge '+badgeClass+'">'+r.kind+'</span></td>'+
+      '<td>'+r.game+'G</td><td>'+(r.getRaw||'-')+'枚</td><td>'+r.E+'</td><td>'+r.F+'</td></tr>';
+    prevKind = r.kind;
+  });
+  html += '</tbody>';
+  table.innerHTML = html;
+
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+document.getElementById('closeBtn').addEventListener('click', () => {
+  document.getElementById('modalOverlay').classList.remove('show');
+});
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'modalOverlay') document.getElementById('modalOverlay').classList.remove('show');
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if(confirm('保存されているすべてのデータを削除します。よろしいですか？')){
+    localStorage.removeItem(STORAGE_KEY);
+    render();
+  }
+});
+
+document.querySelectorAll('.toolbar button[data-sort]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sortKey = btn.dataset.sort;
+    if(currentSort === sortKey && sortKey === 'updated'){
+      sortDir = -sortDir;
+    } else {
+      sortDir = 1;
+    }
+    currentSort = sortKey;
+    document.querySelectorAll('.toolbar button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  });
+});
+
+window.addEventListener('hashchange', () => {
+  upsertFromHash();
+  render();
+});
+window.addEventListener('storage', (e) => {
+  if(e.key === STORAGE_KEY) render();
+});
+
+upsertFromHash();
+render();
+</script>
+</body>
+</html>
