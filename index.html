@@ -118,6 +118,26 @@ function jsonp(url, params, callback){
   }, 10000);
 }
 
+// まずfetchで試し、失敗したらJSONPにフォールバックする
+function callApi(url, params, callback){
+  const qs = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+  fetch(url + '?' + qs, { method: 'GET' })
+    .then(function(r){
+      if(!r.ok) throw new Error('http ' + r.status);
+      return r.json();
+    })
+    .then(function(data){ callback(null, data); })
+    .catch(function(fetchErr){
+      jsonp(url, params, function(jsonpErr, data){
+        if(jsonpErr){
+          callback(new Error('fetch失敗(' + fetchErr.message + ') / JSONPも失敗(' + jsonpErr.message + ')'));
+        } else {
+          callback(null, data);
+        }
+      });
+    });
+}
+
 let entries = [];
 let currentSort = 'daiban';
 let sortDir = 1;
@@ -126,7 +146,7 @@ function fetchList(){
   document.getElementById('loadingMsg').style.display = 'block';
   document.getElementById('listTable').style.display = 'none';
   document.getElementById('emptyMsg').style.display = 'none';
-  jsonp(API_URL, {action:'list'}, function(err, data){
+  callApi(API_URL, {action:'list'}, function(err, data){
     document.getElementById('loadingMsg').style.display = 'none';
     if(err){
       document.getElementById('emptyMsg').style.display = 'block';
@@ -212,7 +232,7 @@ document.getElementById('refreshBtn').addEventListener('click', fetchList);
 
 document.getElementById('resetBtn').addEventListener('click', () => {
   if(confirm('サーバー上の全データを削除します。よろしいですか？')){
-    jsonp(API_URL, {action:'reset'}, function(err){
+    callApi(API_URL, {action:'reset'}, function(err){
       if(err){ alert('削除に失敗しました: ' + err.message); return; }
       fetchList();
     });
