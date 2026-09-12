@@ -138,10 +138,10 @@ function render(entries){
       '<div class="title">'+(entry.modelName||'')+'｜'+(entry.daibanDisplay||entry.daiban)+'番台</div>'+
       '<div class="hall">'+(entry.hallName||'')+'</div>'+
       '<div class="links">'+
-        '<a class="lnk-list" href="'+links.list+'" target="_blank">台番一覧</a>'+
-        '<a class="lnk-detail" href="'+links.detail+'" target="_blank">出玉詳細</a>'+
-        '<a class="lnk-history" href="'+links.history+'" target="_blank">大当り履歴</a>'+
-        '<a class="lnk-suii" href="'+links.suii+'" target="_blank">出玉推移</a>'+
+        '<a class="lnk-list" href="'+links.list+'" target="_blank" rel="noreferrer noopener">台番一覧</a>'+
+        '<a class="lnk-detail" href="'+links.detail+'" target="_blank" rel="noreferrer noopener">出玉詳細</a>'+
+        '<a class="lnk-history" href="'+links.history+'" target="_blank" rel="noreferrer noopener">大当り履歴</a>'+
+        '<a class="lnk-suii" href="'+links.suii+'" target="_blank" rel="noreferrer noopener">出玉推移</a>'+
       '</div>';
     cardList.appendChild(card);
   });
