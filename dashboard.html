@@ -20,12 +20,12 @@
   #refreshBtn { background:#2563eb; color:#fff; }
   #resetBtn { background:#c0392b; color:#fff; }
   .empty, .loading { padding:40px; text-align:center; color:var(--muted); }
-  .card-list { padding:10px; display:flex; flex-direction:column; gap:10px; }
-  .card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px; }
-  .card .title { font-weight:bold; font-size:15px; }
-  .card .hall { font-size:12px; color:var(--muted); margin-bottom:8px; }
-  .card .links { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
-  .card .links button { display:block; width:100%; text-align:center; padding:8px 4px; border-radius:8px; font-size:12px; border:none; color:#fff; font-family:inherit; }
+  .card-list { padding:8px; display:flex; flex-direction:column; gap:6px; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
+  .card .title { font-weight:bold; font-size:14px; }
+  .card .hall { font-size:11px; color:var(--muted); margin-bottom:6px; }
+  .card .links { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+  .card .links button { display:block; width:100%; text-align:center; padding:6px 2px; border-radius:6px; font-size:12px; border:none; color:#fff; font-family:inherit; }
   .lnk-detail { background:#7c3aed; }
   .lnk-history { background:#2979ff; }
   .lnk-suii { background:#f5820d; }
@@ -171,10 +171,10 @@ function render(entries){
       '<div class="title">'+(entry.modelName||'')+'｜'+(entry.daibanDisplay||entry.daiban)+'番台</div>'+
       '<div class="hall">'+(entry.hallName||'')+'</div>'+
       '<div class="links">'+
-        '<button class="lnk-list" data-url="'+links.list.replace(/"/g,'&quot;')+'" data-label="台番一覧">台番一覧</button>'+
-        '<button class="lnk-detail" data-url="'+links.detail.replace(/"/g,'&quot;')+'" data-label="出玉詳細">出玉詳細</button>'+
-        '<button class="lnk-history" data-url="'+links.history.replace(/"/g,'&quot;')+'" data-label="大当り履歴">大当り履歴</button>'+
-        '<button class="lnk-suii" data-url="'+links.suii.replace(/"/g,'&quot;')+'" data-label="出玉推移">出玉推移</button>'+
+        '<button class="lnk-list" data-url="'+links.list.replace(/"/g,'&quot;')+'" data-label="台番一覧">一覧</button>'+
+        '<button class="lnk-detail" data-url="'+links.detail.replace(/"/g,'&quot;')+'" data-label="出玉詳細">詳細</button>'+
+        '<button class="lnk-history" data-url="'+links.history.replace(/"/g,'&quot;')+'" data-label="大当り履歴">履歴</button>'+
+        '<button class="lnk-suii" data-url="'+links.suii.replace(/"/g,'&quot;')+'" data-label="出玉推移">出玉</button>'+
       '</div>';
     card.querySelectorAll('button[data-url]').forEach(function(btn){
       btn.addEventListener('click', function(){
