@@ -20,12 +20,20 @@
   #refreshBtn { background:#2563eb; color:#fff; }
   #resetBtn { background:#c0392b; color:#fff; }
   .empty, .loading { padding:40px; text-align:center; color:var(--muted); }
-  .card-list { padding:8px; display:flex; flex-direction:column; gap:6px; }
-  .card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
-  .card .title { font-weight:bold; font-size:14px; }
-  .card .hall { font-size:11px; color:var(--muted); margin-bottom:6px; }
-  .card .links { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
-  .card .links button { display:block; width:100%; text-align:center; padding:6px 2px; border-radius:6px; font-size:12px; border:none; color:#fff; font-family:inherit; }
+  .card-list { padding:6px; display:flex; flex-direction:column; gap:5px; }
+  .group { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .group-head { display:flex; align-items:center; gap:6px; padding:6px 8px; cursor:pointer; }
+  .group-head .model { font-weight:bold; font-size:13px; color:#1a56db; text-decoration:underline; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .group-head .hall { font-size:10px; color:var(--muted); }
+  .group-head .toggle { font-size:16px; font-weight:bold; color:var(--muted); width:20px; text-align:center; flex-shrink:0; }
+  .group-suii { background:#f5820d; color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:11px; flex-shrink:0; }
+  .group-body { border-top:1px solid var(--border); }
+  .group-body.collapsed { display:none; }
+  .dai-row { display:flex; align-items:center; gap:6px; padding:5px 8px; border-bottom:1px dotted var(--border); }
+  .dai-row:last-child { border-bottom:none; }
+  .dai-row .dn { font-size:12px; font-weight:bold; width:44px; flex-shrink:0; }
+  .dai-row .links { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; flex:1; }
+  .dai-row .links button { display:block; width:100%; text-align:center; padding:5px 2px; border-radius:6px; font-size:11px; border:none; color:#fff; font-family:inherit; }
   .lnk-detail { background:#7c3aed; }
   .lnk-history { background:#2979ff; }
   .lnk-suii { background:#f5820d; }
@@ -121,13 +129,20 @@ function copyToClipboard(text, label){
   }
 }
 
-function buildLinks(entry){
+function buildDaiLinks(entry){
   const pmc = entry.pmc, mdc = entry.mdc, dn = entry.daiban, urt = entry.urt || '2173';
   return {
     detail: entry.siteUrl || ('https://m.site777.jp/f/D4000.do?pmc='+pmc+'&mdc='+mdc+'&dtdd=0&dn='+dn),
     history: 'https://m.site777.jp/f/D3100.do?pmc='+pmc+'&dtdd=0&dn='+dn+'&mdc='+mdc,
-    suii: 'https://m.site777.jp/f/D3000.do?pmc='+pmc+'&gc=2&dn='+dn+'&urt='+urt+'&mdc='+mdc+'&dsgk=0&dtdd=0',
-    list: 'https://m.site777.jp/f/D3300.do?pmc='+pmc+'&mdc='+mdc+'&bn=1&soc=1&sw=1&pan=1&urt='+urt+'&dtdd=0'
+    suii: 'https://m.site777.jp/f/D3000.do?pmc='+pmc+'&gc=2&dn='+dn+'&urt='+urt+'&mdc='+mdc+'&dsgk=0&dtdd=0'
+  };
+}
+
+function buildGroupLinks(entry){
+  const pmc = entry.pmc, mdc = entry.mdc, urt = entry.urt || '2173';
+  return {
+    list: 'https://m.site777.jp/f/D3300.do?pmc='+pmc+'&mdc='+mdc+'&bn=1&soc=1&sw=1&pan=1&urt='+urt+'&dtdd=0',
+    suiiList: 'https://m.site777.jp/f/D4300.do?pmc='+pmc+'&mdc='+mdc+'&bn=1&pan=1&urt='+urt+'&dsgk=0&dtdd=0'
   };
 }
 
@@ -161,27 +176,72 @@ function render(entries){
   emptyMsg.style.display = 'none';
   cardList.style.display = 'flex';
 
-  valid.sort((a,b) => (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0));
-
+  // hallName + modelName でグループ化
+  const groups = {};
+  const order = [];
   valid.forEach(entry => {
-    const links = buildLinks(entry);
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML =
-      '<div class="title">'+(entry.modelName||'')+'｜'+(entry.daibanDisplay||entry.daiban)+'番台</div>'+
-      '<div class="hall">'+(entry.hallName||'')+'</div>'+
-      '<div class="links">'+
-        '<button class="lnk-list" data-url="'+links.list.replace(/"/g,'&quot;')+'" data-label="台番一覧">一覧</button>'+
-        '<button class="lnk-detail" data-url="'+links.detail.replace(/"/g,'&quot;')+'" data-label="出玉詳細">詳細</button>'+
-        '<button class="lnk-history" data-url="'+links.history.replace(/"/g,'&quot;')+'" data-label="大当り履歴">履歴</button>'+
-        '<button class="lnk-suii" data-url="'+links.suii.replace(/"/g,'&quot;')+'" data-label="出玉推移">出玉</button>'+
-      '</div>';
-    card.querySelectorAll('button[data-url]').forEach(function(btn){
+    const key = (entry.hallName||'') + '|' + (entry.modelName||'');
+    if(!groups[key]){ groups[key] = []; order.push(key); }
+    groups[key].push(entry);
+  });
+
+  order.forEach(key => {
+    const list = groups[key];
+    list.sort((a,b) => (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0));
+    const first = list[0];
+    const glinks = buildGroupLinks(first);
+
+    const group = document.createElement('div');
+    group.className = 'group';
+
+    const head = document.createElement('div');
+    head.className = 'group-head';
+    head.innerHTML =
+      '<span class="toggle">−</span>'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div class="model">'+(first.modelName||'')+'</div>'+
+        '<div class="hall">'+(first.hallName||'')+'</div>'+
+      '</div>'+
+      '<button class="group-suii">推移一覧</button>';
+    group.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'group-body';
+
+    list.forEach(entry => {
+      const dlinks = buildDaiLinks(entry);
+      const row = document.createElement('div');
+      row.className = 'dai-row';
+      row.innerHTML =
+        '<div class="dn">'+(entry.daibanDisplay||entry.daiban)+'</div>'+
+        '<div class="links">'+
+          '<button class="lnk-detail" data-url="'+dlinks.detail.replace(/"/g,'&quot;')+'" data-label="出玉詳細">詳細</button>'+
+          '<button class="lnk-history" data-url="'+dlinks.history.replace(/"/g,'&quot;')+'" data-label="大当り履歴">履歴</button>'+
+          '<button class="lnk-suii" data-url="'+dlinks.suii.replace(/"/g,'&quot;')+'" data-label="出玉推移">出玉</button>'+
+        '</div>';
+      body.appendChild(row);
+    });
+    group.appendChild(body);
+
+    head.querySelector('.model').addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyToClipboard(glinks.list, '台番一覧');
+    });
+    head.querySelector('.group-suii').addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyToClipboard(glinks.suiiList, '出玉推移一覧');
+    });
+    head.addEventListener('click', () => {
+      body.classList.toggle('collapsed');
+      head.querySelector('.toggle').textContent = body.classList.contains('collapsed') ? '+' : '−';
+    });
+    group.querySelectorAll('.dai-row button[data-url]').forEach(function(btn){
       btn.addEventListener('click', function(){
         copyToClipboard(btn.getAttribute('data-url'), btn.getAttribute('data-label'));
       });
     });
-    cardList.appendChild(card);
+
+    cardList.appendChild(group);
   });
 }
 
