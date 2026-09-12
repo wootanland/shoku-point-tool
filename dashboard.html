@@ -89,12 +89,12 @@ function callApi(url, params, callback){
 }
 
 function buildLinks(entry){
-  const pmc = entry.pmc, mdc = entry.mdc, dn = entry.daiban;
+  const pmc = entry.pmc, mdc = entry.mdc, dn = entry.daiban, urt = entry.urt || '2173';
   return {
     detail: entry.siteUrl || ('https://m.site777.jp/f/D4000.do?pmc='+pmc+'&mdc='+mdc+'&dtdd=0&dn='+dn),
     history: 'https://m.site777.jp/f/D3100.do?pmc='+pmc+'&dtdd=0&dn='+dn+'&mdc='+mdc,
-    suii: 'https://m.site777.jp/f/D4300.do?pmc='+pmc+'&mdc='+mdc+'&bn=1&dsgk=0&dtdd=0&pan=1',
-    list: 'https://m.site777.jp/f/D3300.do?pmc='+pmc+'&mdc='+mdc+'&dtdd=0'
+    suii: 'https://m.site777.jp/f/D3000.do?pmc='+pmc+'&gc=2&dn='+dn+'&urt='+urt+'&mdc='+mdc+'&dsgk=0&dtdd=0',
+    list: 'https://m.site777.jp/f/D3300.do?pmc='+pmc+'&mdc='+mdc+'&bn=1&soc=1&sw=1&pan=1&urt='+urt+'&dtdd=0'
   };
 }
 
