@@ -161,7 +161,7 @@ function copyToClipboardAndOpenTab(text, label){
 }
 
 function buildDaiLinks(entry){
-  if(entry.siteType === 'daidata'){
+  if(entry.siteType === 'daidata' || entry.siteType === 'teramoba'){
     return {
       detail: entry.siteUrl || '',
       history: null,
@@ -177,7 +177,7 @@ function buildDaiLinks(entry){
 }
 
 function buildGroupLinks(entry){
-  if(entry.siteType === 'daidata'){
+  if(entry.siteType === 'daidata' || entry.siteType === 'teramoba'){
     return {
       list: entry.listUrl || '',
       suiiList: entry.suiiListUrl || ''
@@ -192,7 +192,7 @@ function buildGroupLinks(entry){
 
 function isValidEntry(e){
   if(!e.daiban || e.daiban === '-') return false;
-  if(e.siteType === 'daidata') return !!e.hallCode;
+  if(e.siteType === 'daidata' || e.siteType === 'teramoba') return !!e.siteUrl;
   return !!(e.pmc && e.mdc);
 }
 let selectedHall = null; // null = 全て
@@ -358,7 +358,7 @@ function render(){
       row.innerHTML =
         '<div class="dn">'+(entry.daibanDisplay||entry.daiban)+'</div>'+
         '<div class="links">'+
-          '<button class="lnk-detail" data-url="'+(dlinks.detail||'').replace(/"/g,'&quot;')+'" data-label="出玉詳細"'+(entry.siteType==='daidata'?' data-direct="1"':'')+'>詳細</button>'+
+          '<button class="lnk-detail" data-url="'+(dlinks.detail||'').replace(/"/g,'&quot;')+'" data-label="出玉詳細"'+((entry.siteType==='daidata'||entry.siteType==='teramoba')?' data-direct="1"':'')+'>詳細</button>'+
           historyBtn+
           suiiBtn+
         '</div>'+
@@ -377,12 +377,12 @@ function render(){
 
     head.querySelector('.model').addEventListener('click', (e) => {
       e.stopPropagation();
-      if(first.siteType === 'daidata'){ if(glinks.list) window.open(glinks.list, '_blank'); }
+      if(first.siteType === 'daidata' || first.siteType === 'teramoba'){ if(glinks.list) window.open(glinks.list, '_blank'); }
       else { copyToClipboardAndOpenTab(glinks.list, '台番一覧'); }
     });
     head.querySelector('.group-suii').addEventListener('click', (e) => {
       e.stopPropagation();
-      if(first.siteType === 'daidata'){ if(glinks.suiiList) window.open(glinks.suiiList, '_blank'); }
+      if(first.siteType === 'daidata' || first.siteType === 'teramoba'){ if(glinks.suiiList) window.open(glinks.suiiList, '_blank'); }
       else { copyToClipboardAndOpenTab(glinks.suiiList, '出玉推移一覧'); }
     });
     head.querySelector('.group-del').addEventListener('click', (e) => {
