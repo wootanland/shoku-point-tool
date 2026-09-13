@@ -102,10 +102,13 @@ function callApi(url, params, callback){
     });
 }
 
-function copyToClipboard(text, label){
+function copyToClipboardAndOpenTab(text, label){
+  // ポップアップブロック対策のため、まずタブを開いてからコピー処理を行う
+  const newTab = window.open('about:blank', '_blank');
+
   function showCopyToast(ok){
     const t = document.createElement('div');
-    t.textContent = ok ? (label+'のURLをコピーしました') : 'コピーに失敗しました';
+    t.textContent = ok ? (label+'のURLをコピーしました。新しいタブに貼り付けてください') : 'コピーに失敗しました';
     t.style.position = 'fixed';
     t.style.bottom = '70px';
     t.style.left = '50%';
@@ -117,10 +120,19 @@ function copyToClipboard(text, label){
     t.style.fontSize = '14px';
     t.style.fontWeight = 'bold';
     t.style.zIndex = 999999;
+    t.style.maxWidth = '85vw';
+    t.style.textAlign = 'center';
     t.style.boxShadow = '0 2px 10px rgba(0,0,0,0.4)';
     document.body.appendChild(t);
-    setTimeout(function(){ t.remove(); }, 2500);
+    setTimeout(function(){ t.remove(); }, 3500);
   }
+
+  if(!newTab){
+    showCopyToast(false);
+    alert('新しいタブを開けませんでした。ブラウザのポップアップブロックを確認してください。');
+    return;
+  }
+
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(text).then(function(){ showCopyToast(true); }).catch(function(){ showCopyToast(false); });
   } else {
@@ -274,11 +286,11 @@ function render(){
 
     head.querySelector('.model').addEventListener('click', (e) => {
       e.stopPropagation();
-      copyToClipboard(glinks.list, '台番一覧');
+      copyToClipboardAndOpenTab(glinks.list, '台番一覧');
     });
     head.querySelector('.group-suii').addEventListener('click', (e) => {
       e.stopPropagation();
-      copyToClipboard(glinks.suiiList, '出玉推移一覧');
+      copyToClipboardAndOpenTab(glinks.suiiList, '出玉推移一覧');
     });
     head.querySelector('.group-del').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -294,7 +306,7 @@ function render(){
     });
     group.querySelectorAll('.dai-row .links button[data-url]').forEach(function(btn){
       btn.addEventListener('click', function(){
-        copyToClipboard(btn.getAttribute('data-url'), btn.getAttribute('data-label'));
+        copyToClipboardAndOpenTab(btn.getAttribute('data-url'), btn.getAttribute('data-label'));
       });
     });
 
