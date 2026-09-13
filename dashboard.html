@@ -103,12 +103,9 @@ function callApi(url, params, callback){
 }
 
 function copyToClipboardAndOpenTab(text, label){
-  // ポップアップブロック対策のため、まずタブを開いてからコピー処理を行う
-  const newTab = window.open('about:blank', '_blank');
-
   function showCopyToast(ok){
     const t = document.createElement('div');
-    t.textContent = ok ? (label+'のURLをコピーしました。新しいタブに貼り付けてください') : 'コピーに失敗しました';
+    t.textContent = ok ? (label+'のURLをコピーしました。新しいタブに貼り付けてください') : 'コピーに失敗しました（手動でコピーしてください）';
     t.style.position = 'fixed';
     t.style.bottom = '70px';
     t.style.left = '50%';
@@ -127,14 +124,21 @@ function copyToClipboardAndOpenTab(text, label){
     setTimeout(function(){ t.remove(); }, 3500);
   }
 
-  if(!newTab){
-    showCopyToast(false);
-    alert('新しいタブを開けませんでした。ブラウザのポップアップブロックを確認してください。');
-    return;
+  function openTab(){
+    const newTab = window.open('about:blank', '_blank');
+    if(!newTab){
+      alert('新しいタブを開けませんでした。ブラウザのポップアップブロックを確認してください。URLはコピー済みです。');
+    }
   }
 
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(function(){ showCopyToast(true); }).catch(function(){ showCopyToast(false); });
+    navigator.clipboard.writeText(text).then(function(){
+      showCopyToast(true);
+      openTab();
+    }).catch(function(){
+      showCopyToast(false);
+      openTab();
+    });
   } else {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -142,8 +146,11 @@ function copyToClipboardAndOpenTab(text, label){
     ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); showCopyToast(true); } catch(e){ showCopyToast(false); }
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
     document.body.removeChild(ta);
+    showCopyToast(ok);
+    openTab();
   }
 }
 
