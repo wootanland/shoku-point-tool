@@ -219,18 +219,43 @@ function moveInOrder(orderKey, allKeys, itemKey, dir){
   saveOrder(orderKey, order);
 }
 
+const LIST_CACHE_KEY = 'dashboardListDaiCache_v1';
+
+function loadListCache(){
+  try {
+    const raw = localStorage.getItem(LIST_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+function saveListCache(data){
+  try { localStorage.setItem(LIST_CACHE_KEY, JSON.stringify(data)); } catch(e){}
+}
+
 function fetchList(){
-  document.getElementById('loadingMsg').style.display = 'block';
-  document.getElementById('cardList').style.display = 'none';
-  document.getElementById('emptyMsg').style.display = 'none';
+  // 前回の結果があれば、すぐそれを表示してから裏で最新を取りに行く
+  const cached = loadListCache();
+  if(cached && Array.isArray(cached)){
+    allEntries = cached;
+    document.getElementById('loadingMsg').style.display = 'none';
+    renderTabs();
+    render();
+  } else {
+    document.getElementById('loadingMsg').style.display = 'block';
+    document.getElementById('cardList').style.display = 'none';
+    document.getElementById('emptyMsg').style.display = 'none';
+  }
+
   callApi(API_URL, {action:'listDai'}, function(err, data){
     document.getElementById('loadingMsg').style.display = 'none';
     if(err){
-      document.getElementById('emptyMsg').style.display = 'block';
-      document.getElementById('emptyMsg').textContent = '読み込みに失敗しました: ' + err.message;
+      if(!cached){
+        document.getElementById('emptyMsg').style.display = 'block';
+        document.getElementById('emptyMsg').textContent = '読み込みに失敗しました: ' + err.message;
+      }
       return;
     }
     allEntries = Array.isArray(data) ? data : [];
+    saveListCache(allEntries);
     renderTabs();
     render();
   });
@@ -368,6 +393,7 @@ function render(){
         if(!confirm(entry.hallName+' '+(entry.daibanDisplay||entry.daiban)+'番台を削除します。よろしいですか？')) return;
         callApi(API_URL, {action:'deleteDaiOne', hallName:entry.hallName, daiban:entry.daiban}, function(err){
           if(err){ alert('削除に失敗しました: ' + err.message); return; }
+          try{ localStorage.removeItem(LIST_CACHE_KEY); }catch(e){}
           fetchList();
         });
       });
@@ -390,6 +416,7 @@ function render(){
       if(!confirm((first.modelName||'')+'（'+(first.hallName||'')+'）を台番ごとまとめて削除します。よろしいですか？')) return;
       callApi(API_URL, {action:'deleteDaiGroup', hallName:first.hallName, modelName:first.modelName}, function(err){
         if(err){ alert('削除に失敗しました: ' + err.message); return; }
+        try{ localStorage.removeItem(LIST_CACHE_KEY); }catch(e){}
         fetchList();
       });
     });
@@ -427,6 +454,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   if(confirm('登録されているショートカットをすべて削除します。よろしいですか？')){
     callApi(API_URL, {action:'resetDai'}, function(err){
       if(err){ alert('削除に失敗しました: ' + err.message); return; }
+      try{ localStorage.removeItem(LIST_CACHE_KEY); }catch(e){}
       fetchList();
     });
   }
