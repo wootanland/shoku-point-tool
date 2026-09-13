@@ -190,7 +190,11 @@ function buildGroupLinks(entry){
   };
 }
 
-let allEntries = [];
+function isValidEntry(e){
+  if(!e.daiban || e.daiban === '-') return false;
+  if(e.siteType === 'daidata') return !!e.hallCode;
+  return !!(e.pmc && e.mdc);
+}
 let selectedHall = null; // null = 全て
 let reorderMode = false;
 
@@ -233,7 +237,7 @@ function fetchList(){
 }
 
 function renderTabs(){
-  const valid = allEntries.filter(e => e.daiban && e.daiban !== '-' && e.pmc && e.mdc);
+  const valid = allEntries.filter(isValidEntry);
   let halls = [];
   valid.forEach(e => { if(e.hallName && halls.indexOf(e.hallName) === -1) halls.push(e.hallName); });
   halls = sortByOrder(halls, loadOrder('hallOrder'), h => h);
@@ -287,7 +291,7 @@ function renderTabs(){
 }
 
 function render(){
-  const valid = allEntries.filter(e => e.daiban && e.daiban !== '-' && e.pmc && e.mdc && (!selectedHall || e.hallName === selectedHall));
+  const valid = allEntries.filter(e => isValidEntry(e) && (!selectedHall || e.hallName === selectedHall));
   const cardList = document.getElementById('cardList');
   const emptyMsg = document.getElementById('emptyMsg');
   cardList.innerHTML = '';
