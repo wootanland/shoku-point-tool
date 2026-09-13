@@ -19,10 +19,13 @@
   header button { border:none; border-radius:6px; padding:8px 12px; font-size:13px; }
   #refreshBtn { background:#2563eb; color:#fff; }
   #resetBtn { background:#c0392b; color:#fff; }
+  #reorderBtn { background:#7c3aed; color:#fff; }
   .empty, .loading { padding:40px; text-align:center; color:var(--muted); }
-  .hall-tabs { display:flex; gap:6px; padding:8px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--border); position:sticky; top:56px; z-index:9; }
-  .hall-tabs button { flex-shrink:0; border:1px solid var(--border); background:#eee; border-radius:14px; padding:6px 12px; font-size:12px; white-space:nowrap; }
-  .hall-tabs button.active { background:#333; color:#fff; border-color:#333; }
+  .hall-tabs { display:flex; gap:6px; padding:8px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--border); position:sticky; top:56px; z-index:9; align-items:center; }
+  .hall-tabs .tab-wrap { display:flex; align-items:center; gap:2px; flex-shrink:0; }
+  .hall-tabs button.hall-btn { flex-shrink:0; border:1px solid var(--border); background:#eee; border-radius:14px; padding:6px 12px; font-size:12px; white-space:nowrap; }
+  .hall-tabs button.hall-btn.active { background:#333; color:#fff; border-color:#333; }
+  .move-btn { flex-shrink:0; border:none; background:#ddd; border-radius:6px; width:22px; height:22px; font-size:11px; line-height:1; }
   .card-list { padding:6px; display:flex; flex-direction:column; gap:5px; }
   .group { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
   .group-head { display:flex; align-items:center; gap:6px; padding:6px 8px; cursor:pointer; }
@@ -31,6 +34,8 @@
   .group-head .toggle { font-size:16px; font-weight:bold; color:var(--muted); width:20px; text-align:center; flex-shrink:0; }
   .group-suii { background:#f5820d; color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:11px; flex-shrink:0; }
   .group-del { background:none; border:none; color:#c0392b; font-size:16px; font-weight:bold; flex-shrink:0; padding:2px 6px; }
+  .group-move { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
+  .group-move button { border:none; background:#ddd; border-radius:4px; width:20px; height:16px; font-size:9px; line-height:1; }
   .group-body { border-top:1px solid var(--border); }
   .group-body.collapsed { display:none; }
   .dai-row { display:flex; align-items:center; gap:6px; padding:5px 8px; border-bottom:1px dotted var(--border); }
@@ -49,6 +54,7 @@
 <header>
   <h1>サイトセブン ショートカット</h1>
   <div class="btns">
+    <button id="reorderBtn">並び替え</button>
     <button id="refreshBtn">更新</button>
     <button id="resetBtn">リセット</button>
   </div>
@@ -173,6 +179,28 @@ function buildGroupLinks(entry){
 
 let allEntries = [];
 let selectedHall = null; // null = 全て
+let reorderMode = false;
+
+function loadOrder(key){
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch(e){ return []; }
+}
+function saveOrder(key, arr){
+  try { localStorage.setItem(key, JSON.stringify(arr)); } catch(e){}
+}
+function sortByOrder(items, orderArr, keyFn){
+  const order = orderArr.slice();
+  items.forEach(item => { const k = keyFn(item); if(order.indexOf(k) === -1) order.push(k); });
+  return items.slice().sort((a,b) => order.indexOf(keyFn(a)) - order.indexOf(keyFn(b)));
+}
+function moveInOrder(orderKey, allKeys, itemKey, dir){
+  let order = loadOrder(orderKey);
+  allKeys.forEach(k => { if(order.indexOf(k) === -1) order.push(k); });
+  const i = order.indexOf(itemKey);
+  const j = i + dir;
+  if(i < 0 || j < 0 || j >= order.length) return;
+  const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+  saveOrder(orderKey, order);
+}
 
 function fetchList(){
   document.getElementById('loadingMsg').style.display = 'block';
@@ -193,8 +221,10 @@ function fetchList(){
 
 function renderTabs(){
   const valid = allEntries.filter(e => e.daiban && e.daiban !== '-' && e.pmc && e.mdc);
-  const halls = [];
+  let halls = [];
   valid.forEach(e => { if(e.hallName && halls.indexOf(e.hallName) === -1) halls.push(e.hallName); });
+  halls = sortByOrder(halls, loadOrder('hallOrder'), h => h);
+
   const tabsEl = document.getElementById('hallTabs');
   tabsEl.innerHTML = '';
   if(halls.length === 0){
@@ -204,18 +234,42 @@ function renderTabs(){
   tabsEl.style.display = 'flex';
   if(selectedHall && halls.indexOf(selectedHall) === -1) selectedHall = null;
 
+  const allWrap = document.createElement('div');
+  allWrap.className = 'tab-wrap';
   const allBtn = document.createElement('button');
+  allBtn.className = 'hall-btn';
   allBtn.textContent = 'すべて';
   if(!selectedHall) allBtn.classList.add('active');
   allBtn.addEventListener('click', () => { selectedHall = null; renderTabs(); render(); });
-  tabsEl.appendChild(allBtn);
+  allWrap.appendChild(allBtn);
+  tabsEl.appendChild(allWrap);
 
-  halls.forEach(h => {
+  halls.forEach((h, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'tab-wrap';
+    if(reorderMode){
+      const left = document.createElement('button');
+      left.className = 'move-btn';
+      left.textContent = '◀';
+      left.disabled = idx === 0;
+      left.addEventListener('click', (e) => { e.stopPropagation(); moveInOrder('hallOrder', halls, h, -1); renderTabs(); });
+      wrap.appendChild(left);
+    }
     const btn = document.createElement('button');
+    btn.className = 'hall-btn';
     btn.textContent = h;
     if(selectedHall === h) btn.classList.add('active');
-    btn.addEventListener('click', () => { selectedHall = h; renderTabs(); render(); });
-    tabsEl.appendChild(btn);
+    btn.addEventListener('click', () => { if(reorderMode) return; selectedHall = h; renderTabs(); render(); });
+    wrap.appendChild(btn);
+    if(reorderMode){
+      const right = document.createElement('button');
+      right.className = 'move-btn';
+      right.textContent = '▶';
+      right.disabled = idx === halls.length - 1;
+      right.addEventListener('click', (e) => { e.stopPropagation(); moveInOrder('hallOrder', halls, h, 1); renderTabs(); });
+      wrap.appendChild(right);
+    }
+    tabsEl.appendChild(wrap);
   });
 }
 
@@ -236,14 +290,15 @@ function render(){
 
   // hallName + modelName でグループ化
   const groups = {};
-  const order = [];
+  let order = [];
   valid.forEach(entry => {
     const key = (entry.hallName||'') + '|' + (entry.modelName||'');
     if(!groups[key]){ groups[key] = []; order.push(key); }
     groups[key].push(entry);
   });
+  order = sortByOrder(order, loadOrder('groupOrder'), k => k);
 
-  order.forEach(key => {
+  order.forEach((key, idx) => {
     const list = groups[key];
     list.sort((a,b) => (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0));
     const first = list[0];
@@ -260,9 +315,15 @@ function render(){
         '<div class="model">'+(first.modelName||'')+'</div>'+
         '<div class="hall">'+(first.hallName||'')+'</div>'+
       '</div>'+
+      (reorderMode ? '<div class="group-move"><button class="mv-up" '+(idx===0?'disabled':'')+'>▲</button><button class="mv-down" '+(idx===order.length-1?'disabled':'')+'>▼</button></div>' : '')+
       '<button class="group-suii">推移一覧</button>'+
       '<button class="group-del" title="この機種をまとめて削除">✕</button>';
     group.appendChild(head);
+
+    if(reorderMode){
+      head.querySelector('.mv-up').addEventListener('click', (e) => { e.stopPropagation(); moveInOrder('groupOrder', order, key, -1); render(); });
+      head.querySelector('.mv-down').addEventListener('click', (e) => { e.stopPropagation(); moveInOrder('groupOrder', order, key, 1); render(); });
+    }
 
     const body = document.createElement('div');
     body.className = 'group-body';
@@ -320,6 +381,14 @@ function render(){
     cardList.appendChild(group);
   });
 }
+
+document.getElementById('reorderBtn').addEventListener('click', () => {
+  reorderMode = !reorderMode;
+  document.getElementById('reorderBtn').textContent = reorderMode ? '並び替え完了' : '並び替え';
+  document.getElementById('reorderBtn').style.background = reorderMode ? '#16a34a' : '#7c3aed';
+  renderTabs();
+  render();
+});
 
 document.getElementById('refreshBtn').addEventListener('click', fetchList);
 
