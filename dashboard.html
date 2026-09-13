@@ -20,6 +20,9 @@
   #refreshBtn { background:#2563eb; color:#fff; }
   #resetBtn { background:#c0392b; color:#fff; }
   .empty, .loading { padding:40px; text-align:center; color:var(--muted); }
+  .hall-tabs { display:flex; gap:6px; padding:8px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--border); position:sticky; top:56px; z-index:9; }
+  .hall-tabs button { flex-shrink:0; border:1px solid var(--border); background:#eee; border-radius:14px; padding:6px 12px; font-size:12px; white-space:nowrap; }
+  .hall-tabs button.active { background:#333; color:#fff; border-color:#333; }
   .card-list { padding:6px; display:flex; flex-direction:column; gap:5px; }
   .group { background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
   .group-head { display:flex; align-items:center; gap:6px; padding:6px 8px; cursor:pointer; }
@@ -27,13 +30,15 @@
   .group-head .hall { font-size:10px; color:var(--muted); }
   .group-head .toggle { font-size:16px; font-weight:bold; color:var(--muted); width:20px; text-align:center; flex-shrink:0; }
   .group-suii { background:#f5820d; color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:11px; flex-shrink:0; }
+  .group-del { background:none; border:none; color:#c0392b; font-size:16px; font-weight:bold; flex-shrink:0; padding:2px 6px; }
   .group-body { border-top:1px solid var(--border); }
   .group-body.collapsed { display:none; }
   .dai-row { display:flex; align-items:center; gap:6px; padding:5px 8px; border-bottom:1px dotted var(--border); }
   .dai-row:last-child { border-bottom:none; }
-  .dai-row .dn { font-size:12px; font-weight:bold; width:44px; flex-shrink:0; }
+  .dai-row .dn { font-size:12px; font-weight:bold; width:36px; flex-shrink:0; }
   .dai-row .links { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; flex:1; }
   .dai-row .links button { display:block; width:100%; text-align:center; padding:5px 2px; border-radius:6px; font-size:11px; border:none; color:#fff; font-family:inherit; }
+  .dai-del { background:none; border:none; color:#c0392b; font-size:14px; font-weight:bold; flex-shrink:0; padding:2px 4px; }
   .lnk-detail { background:#7c3aed; }
   .lnk-history { background:#2979ff; }
   .lnk-suii { background:#f5820d; }
@@ -49,6 +54,7 @@
   </div>
 </header>
 <div id="wrap">
+  <div id="hallTabs" class="hall-tabs" style="display:none;"></div>
   <div id="loadingMsg" class="loading">読み込み中...</div>
   <div id="cardList" class="card-list" style="display:none;"></div>
   <div id="emptyMsg" class="empty" style="display:none;">まだデータがありません。<br>サイトセブンの出玉詳細ページでブックマークレットを実行してください。</div>
@@ -146,6 +152,9 @@ function buildGroupLinks(entry){
   };
 }
 
+let allEntries = [];
+let selectedHall = null; // null = 全て
+
 function fetchList(){
   document.getElementById('loadingMsg').style.display = 'block';
   document.getElementById('cardList').style.display = 'none';
@@ -157,12 +166,42 @@ function fetchList(){
       document.getElementById('emptyMsg').textContent = '読み込みに失敗しました: ' + err.message;
       return;
     }
-    render(Array.isArray(data) ? data : []);
+    allEntries = Array.isArray(data) ? data : [];
+    renderTabs();
+    render();
   });
 }
 
-function render(entries){
-  const valid = entries.filter(e => e.daiban && e.daiban !== '-' && e.pmc && e.mdc);
+function renderTabs(){
+  const valid = allEntries.filter(e => e.daiban && e.daiban !== '-' && e.pmc && e.mdc);
+  const halls = [];
+  valid.forEach(e => { if(e.hallName && halls.indexOf(e.hallName) === -1) halls.push(e.hallName); });
+  const tabsEl = document.getElementById('hallTabs');
+  tabsEl.innerHTML = '';
+  if(halls.length === 0){
+    tabsEl.style.display = 'none';
+    return;
+  }
+  tabsEl.style.display = 'flex';
+  if(selectedHall && halls.indexOf(selectedHall) === -1) selectedHall = null;
+
+  const allBtn = document.createElement('button');
+  allBtn.textContent = 'すべて';
+  if(!selectedHall) allBtn.classList.add('active');
+  allBtn.addEventListener('click', () => { selectedHall = null; renderTabs(); render(); });
+  tabsEl.appendChild(allBtn);
+
+  halls.forEach(h => {
+    const btn = document.createElement('button');
+    btn.textContent = h;
+    if(selectedHall === h) btn.classList.add('active');
+    btn.addEventListener('click', () => { selectedHall = h; renderTabs(); render(); });
+    tabsEl.appendChild(btn);
+  });
+}
+
+function render(){
+  const valid = allEntries.filter(e => e.daiban && e.daiban !== '-' && e.pmc && e.mdc && (!selectedHall || e.hallName === selectedHall));
   const cardList = document.getElementById('cardList');
   const emptyMsg = document.getElementById('emptyMsg');
   cardList.innerHTML = '';
@@ -202,7 +241,8 @@ function render(entries){
         '<div class="model">'+(first.modelName||'')+'</div>'+
         '<div class="hall">'+(first.hallName||'')+'</div>'+
       '</div>'+
-      '<button class="group-suii">推移一覧</button>';
+      '<button class="group-suii">推移一覧</button>'+
+      '<button class="group-del" title="この機種をまとめて削除">✕</button>';
     group.appendChild(head);
 
     const body = document.createElement('div');
@@ -218,7 +258,16 @@ function render(entries){
           '<button class="lnk-detail" data-url="'+dlinks.detail.replace(/"/g,'&quot;')+'" data-label="出玉詳細">詳細</button>'+
           '<button class="lnk-history" data-url="'+dlinks.history.replace(/"/g,'&quot;')+'" data-label="大当り履歴">履歴</button>'+
           '<button class="lnk-suii" data-url="'+dlinks.suii.replace(/"/g,'&quot;')+'" data-label="出玉推移">出玉</button>'+
-        '</div>';
+        '</div>'+
+        '<button class="dai-del" title="この台を削除">✕</button>';
+      row.querySelector('.dai-del').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if(!confirm(entry.hallName+' '+(entry.daibanDisplay||entry.daiban)+'番台を削除します。よろしいですか？')) return;
+        callApi(API_URL, {action:'deleteDaiOne', hallName:entry.hallName, daiban:entry.daiban}, function(err){
+          if(err){ alert('削除に失敗しました: ' + err.message); return; }
+          fetchList();
+        });
+      });
       body.appendChild(row);
     });
     group.appendChild(body);
@@ -231,11 +280,19 @@ function render(entries){
       e.stopPropagation();
       copyToClipboard(glinks.suiiList, '出玉推移一覧');
     });
+    head.querySelector('.group-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(!confirm((first.modelName||'')+'（'+(first.hallName||'')+'）を台番ごとまとめて削除します。よろしいですか？')) return;
+      callApi(API_URL, {action:'deleteDaiGroup', hallName:first.hallName, modelName:first.modelName}, function(err){
+        if(err){ alert('削除に失敗しました: ' + err.message); return; }
+        fetchList();
+      });
+    });
     head.addEventListener('click', () => {
       body.classList.toggle('collapsed');
       head.querySelector('.toggle').textContent = body.classList.contains('collapsed') ? '+' : '−';
     });
-    group.querySelectorAll('.dai-row button[data-url]').forEach(function(btn){
+    group.querySelectorAll('.dai-row .links button[data-url]').forEach(function(btn){
       btn.addEventListener('click', function(){
         copyToClipboard(btn.getAttribute('data-url'), btn.getAttribute('data-label'));
       });
