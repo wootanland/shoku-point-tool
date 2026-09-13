@@ -358,7 +358,7 @@ function render(){
       row.innerHTML =
         '<div class="dn">'+(entry.daibanDisplay||entry.daiban)+'</div>'+
         '<div class="links">'+
-          '<button class="lnk-detail" data-url="'+(dlinks.detail||'').replace(/"/g,'&quot;')+'" data-label="出玉詳細">詳細</button>'+
+          '<button class="lnk-detail" data-url="'+(dlinks.detail||'').replace(/"/g,'&quot;')+'" data-label="出玉詳細"'+(entry.siteType==='daidata'?' data-direct="1"':'')+'>詳細</button>'+
           historyBtn+
           suiiBtn+
         '</div>'+
@@ -377,11 +377,13 @@ function render(){
 
     head.querySelector('.model').addEventListener('click', (e) => {
       e.stopPropagation();
-      copyToClipboardAndOpenTab(glinks.list, '台番一覧');
+      if(first.siteType === 'daidata'){ if(glinks.list) window.open(glinks.list, '_blank'); }
+      else { copyToClipboardAndOpenTab(glinks.list, '台番一覧'); }
     });
     head.querySelector('.group-suii').addEventListener('click', (e) => {
       e.stopPropagation();
-      copyToClipboardAndOpenTab(glinks.suiiList, '出玉推移一覧');
+      if(first.siteType === 'daidata'){ if(glinks.suiiList) window.open(glinks.suiiList, '_blank'); }
+      else { copyToClipboardAndOpenTab(glinks.suiiList, '出玉推移一覧'); }
     });
     head.querySelector('.group-del').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -397,7 +399,13 @@ function render(){
     });
     group.querySelectorAll('.dai-row .links button[data-url]').forEach(function(btn){
       btn.addEventListener('click', function(){
-        copyToClipboardAndOpenTab(btn.getAttribute('data-url'), btn.getAttribute('data-label'));
+        const url = btn.getAttribute('data-url');
+        const label = btn.getAttribute('data-label');
+        if(btn.getAttribute('data-direct') === '1'){
+          window.open(url, '_blank');
+        } else {
+          copyToClipboardAndOpenTab(url, label);
+        }
       });
     });
 
