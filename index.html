@@ -312,7 +312,7 @@ function lookupNerai(state){
 function formatNeraiTarget(target){
   if (target === undefined) return { text: '判定不可', cls: 'unknown' };
   if (target === null) return { text: '-', cls: 'no-target' };
-  return { text: '液晶' + target + 'Gから', cls: 'has-target' };
+  return { text: '液晶' + target + 'G', cls: 'has-target' };
 }
 
 function getNeraiDisplay(entry){
