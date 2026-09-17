@@ -23,9 +23,6 @@
   header button { border:none; border-radius:6px; padding:8px 12px; font-size:13px; }
   #refreshBtn { background:#2563eb; color:#fff; }
   #resetBtn { background:#c0392b; color:#fff; }
-  .toolbar { display:flex; gap:8px; padding:10px 16px; flex-wrap:wrap; background:#fff; border-bottom:1px solid var(--border); }
-  .toolbar button { background:#eee; border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:12px; }
-  .toolbar button.active { background:#333; color:#fff; }
   .hall-tabs { display:flex; gap:6px; padding:8px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--border); position:sticky; top:56px; z-index:9; }
   .hall-tabs button { flex-shrink:0; border:1px solid var(--border); background:#eee; border-radius:14px; padding:6px 12px; font-size:12px; white-space:nowrap; }
   .hall-tabs button.active { background:#333; color:#fff; border-color:#333; }
@@ -70,11 +67,6 @@
     <button id="resetBtn">リセット</button>
   </div>
 </header>
-<div class="toolbar">
-  <button data-sort="daiban" class="active">台番順</button>
-  <button data-sort="hall">ホールごと</button>
-  <button data-sort="updated">最終更新順</button>
-</div>
 <div id="hallTabs" class="hall-tabs" style="display:none;"></div>
 <div id="listWrap">
   <div id="loadingMsg" class="loading">読み込み中...</div>
@@ -382,8 +374,6 @@ function callApi(url, params, callback){
 }
 
 let entries = [];
-let currentSort = 'daiban';
-let sortDir = 1;
 let selectedHall = null; // null = すべて
 
 function fetchList(){
@@ -449,18 +439,7 @@ function render(){
   emptyMsg.style.display = 'none';
   listTable.style.display = 'table';
 
-  const sorted = filtered.slice().sort((a,b) => {
-    if(currentSort === 'daiban'){
-      return (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0);
-    } else if(currentSort === 'hall'){
-      const h = (a.hallName||'').localeCompare(b.hallName||'');
-      if(h !== 0) return h;
-      return (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0);
-    } else if(currentSort === 'updated'){
-      return sortDir * (new Date(a.updatedAt||0) - new Date(b.updatedAt||0));
-    }
-    return 0;
-  });
+  const sorted = filtered.slice().sort((a,b) => (parseInt(a.daiban,10)||0) - (parseInt(b.daiban,10)||0));
 
   sorted.forEach(entry => {
     const tr = document.createElement('tr');
@@ -516,21 +495,6 @@ document.getElementById('resetBtn').addEventListener('click', () => {
       fetchList();
     });
   }
-});
-
-document.querySelectorAll('.toolbar button[data-sort]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const sortKey = btn.dataset.sort;
-    if(currentSort === sortKey && sortKey === 'updated'){
-      sortDir = -sortDir;
-    } else {
-      sortDir = 1;
-    }
-    currentSort = sortKey;
-    document.querySelectorAll('.toolbar button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    render();
-  });
 });
 
 fetchList();
