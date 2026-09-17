@@ -35,6 +35,10 @@
   table.list tbody tr:active { background:#f0f0f0; }
   .daiban-link { color:#1a56db; font-weight:bold; text-decoration:underline; }
   .daiban-cell .hall-sub { font-size:10px; color:var(--muted); margin-top:2px; }
+  .nerai-cell { font-size:12px; white-space:nowrap; }
+  .nerai-cell.has-target { color:#c0392b; font-weight:bold; }
+  .nerai-cell.no-target { color:var(--muted); }
+  .nerai-cell.unknown { color:#bbb; }
   .empty, .loading { padding:40px; text-align:center; color:var(--muted); }
 
   .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:16px; z-index:1000; }
@@ -48,6 +52,7 @@
   .pt-summary .box { flex:1; min-width:90px; background:#f5f6fa; border-radius:8px; padding:8px; text-align:center; }
   .pt-summary .box .label { font-size:11px; color:var(--muted); }
   .pt-summary .box .val { font-size:18px; font-weight:bold; }
+  .pt-summary .box .val.small { font-size:13px; }
   table.detail { width:100%; border-collapse:collapse; }
   table.detail th, table.detail td { padding:6px 4px; text-align:center; border-bottom:1px solid var(--border); font-size:12px; }
   table.detail th { background:#eee; position:sticky; top:0; }
@@ -74,7 +79,7 @@
 <div id="listWrap">
   <div id="loadingMsg" class="loading">読み込み中...</div>
   <table class="list" id="listTable" style="display:none;">
-    <thead><tr><th>台番</th><th>喰pt</th><th>最終更新</th><th></th></tr></thead>
+    <thead><tr><th>台番</th><th>喰pt</th><th>狙い目</th><th>最終更新</th></tr></thead>
     <tbody id="listBody"></tbody>
   </table>
   <div id="emptyMsg" class="empty" style="display:none;">まだデータがありません。<br>サイトセブンの大当り履歴ページでブックマークレットを実行してください。</div>
@@ -93,6 +98,239 @@
 </div>
 
 <script>
+/* ==========================================================================
+   狙い目判定ロジック
+   ※ このファイルには判定に使うしきい値（部外秘の狙い目表）が含まれています。
+     このツールの利用者本人以外に配布・共有しないでください。
+   ========================================================================== */
+
+// ---- 狙い目表本体 -----------------------------------------------------
+// pairs形式: [ptMax, target] の配列（ptMax以下ならtargetを採用。targetはnull='-'、数値はGの数）
+// hamari区分(スルー1〜4)は [{hamariMax, through:[...pairs], notThrough:[...pairs]} ...] の配列
+// スルー5以降・一部のAT間ハマリ区分(851G以上など)は不問のため {always: 数値} 形式
+
+const NERAI_TABLE = {
+  slip0: {
+    through:    [[7,null],[8,315],[9,220],[10,185],[11,210],[Infinity,null]],
+    notThrough: [[Infinity,null]],
+    settingChanged: null // 常に '-'
+  },
+  slip1: {
+    settingChanged: [
+      { hamariMax: 150, target: null },
+      { hamariMax: Infinity, target: 305 }
+    ],
+    buckets: [
+      { hamariMax: 150,
+        through:    [[7,null],[8,185],[12,0],[13,160],[Infinity,null]],
+        notThrough: [[7,null],[8,200],[11,0],[12,180],[Infinity,null]] },
+      { hamariMax: 250,
+        through:    [[6,null],[7,290],[8,145],[12,0],[13,40],[Infinity,null]],
+        notThrough: [[6,null],[7,305],[8,165],[11,0],[12,150],[Infinity,null]] },
+      { hamariMax: 350,
+        through:    [[5,null],[6,310],[7,275],[8,145],[12,0],[13,45],[14,220],[Infinity,null]],
+        notThrough: [[6,null],[7,285],[8,150],[11,0],[12,165],[Infinity,null]] },
+      { hamariMax: 450,
+        through:    [[4,325],[5,315],[6,305],[7,240],[8,160],[12,0],[13,85],[14,220],[15,265],[16,295],[Infinity,325]],
+        notThrough: [[4,325],[5,315],[6,305],[7,230],[8,165],[9,55],[10,25],[11,35],[12,160],[13,240],[14,285],[15,295],[Infinity,325]] },
+      { hamariMax: 550,
+        through:    [[5,275],[6,250],[7,205],[8,100],[12,0],[13,55],[14,180],[15,210],[16,230],[Infinity,275]],
+        notThrough: [[5,275],[6,250],[7,220],[8,90],[9,25],[11,0],[12,85],[13,210],[14,230],[15,240],[Infinity,275]] },
+      { hamariMax: Infinity,
+        through:    [[5,210],[6,200],[7,160],[8,45],[13,0],[14,105],[15,160],[16,185],[Infinity,210]],
+        notThrough: [[5,210],[6,200],[7,165],[8,55],[11,0],[12,35],[13,145],[14,170],[15,185],[Infinity,210]] }
+    ]
+  },
+  slip2: {
+    settingChanged: [
+      { hamariMax: 250, target: null },
+      { hamariMax: 550, target: 185 },
+      { hamariMax: Infinity, target: 0 }
+    ],
+    buckets: [
+      { hamariMax: 250,
+        through:    [[6,null],[7,275],[14,0],[Infinity,null]],
+        notThrough: [[6,null],[7,220],[13,0],[Infinity,null]] },
+      { hamariMax: 450,
+        through:    [[4,275],[5,220],[6,200],[7,150],[14,0],[15,35],[16,170],[17,200],[Infinity,275]],
+        notThrough: [[4,275],[5,220],[6,205],[7,150],[13,0],[14,55],[15,185],[16,200],[Infinity,275]] },
+      { hamariMax: 550,
+        through:    [[4,185],[5,180],[6,165],[7,60],[15,0],[16,65],[17,160],[Infinity,185]],
+        notThrough: [[4,185],[5,180],[6,165],[7,60],[13,0],[14,25],[15,65],[16,160],[Infinity,185]] },
+      { hamariMax: 650,
+        through:    [[3,90],[5,85],[6,75],[7,40],[15,0],[16,35],[17,60],[Infinity,90]],
+        notThrough: [[3,90],[5,85],[6,75],[7,40],[14,0],[15,35],[16,60],[Infinity,90]] },
+      { hamariMax: 850,
+        through:    [[4,40],[5,35],[6,25],[17,0],[Infinity,40]],
+        notThrough: [[4,40],[5,35],[6,25],[16,0],[Infinity,40]] },
+      { hamariMax: Infinity, always: 0 }
+    ]
+  },
+  slip3: {
+    settingChanged: [
+      { hamariMax: 550, target: 0 },
+      { hamariMax: Infinity, target: 20 }
+    ],
+    buckets: [
+      { hamariMax: 550,
+        through:    [[4,200],[5,190],[6,165],[7,35],[16,0],[17,150],[18,180],[Infinity,200]],
+        notThrough: [[5,200],[6,170],[7,35],[15,0],[16,60],[17,180],[Infinity,200]] },
+      { hamariMax: 750,
+        through:    [[5,35],[6,20],[18,0],[Infinity,35]],
+        notThrough: [[5,35],[6,20],[17,0],[Infinity,35]] },
+      { hamariMax: Infinity, always: 0 }
+    ]
+  },
+  slip4: {
+    buckets: [
+      { hamariMax: 550,
+        through:    [[5,165],[6,160],[7,20],[18,0],[19,25],[Infinity,165]],
+        notThrough: [[5,165],[6,160],[7,20],[17,0],[18,25],[Infinity,165]] },
+      { hamariMax: Infinity, always: 0 }
+    ]
+  }
+  // スルー5以降は常に「液晶0Gから」(下のlookupNerai内で個別処理)
+};
+
+// ---- 判定ロジック -------------------------------------------------------
+
+// 「約100枚前後」判定（エピソードボーナス予告の獲得枚数）
+function isAbout100(getRaw){
+  const v = parseInt(String(getRaw).replace(/[^0-9-]/g, ''), 10);
+  if (isNaN(v)) return false;
+  return v >= 90 && v <= 110;
+}
+
+// entry.rows（index0=最新, 末尾=最古）から現在の状態を判定する
+// 戻り値: { insufficient:true } または
+//         { insufficient:false, slipCount, hamari, throughAfterAT, kuiCount }
+function computeNeraiState(entry){
+  const rows = Array.isArray(entry.rows) ? entry.rows : [];
+  const n = rows.length;
+  const currentElapsed = entry.currentElapsed || 0;
+  const kuiCount = entry.currentPT || 0;
+
+  if (n === 0) return { insufficient: true };
+
+  // --- ATのまとまりを古い方から新しい方へ走査して特定する ---
+  const groups = [];
+  let i = n - 1;
+  while (i >= 0) {
+    if (rows[i].kind !== 'ART') { i--; continue; }
+
+    let trueStart = i;
+    // エピソードボーナス予告（3G以上・約100枚）の直後1G側ARTを実質の初当りとする
+    if (i - 1 >= 0 &&
+        rows[i - 1].kind === 'ART' &&
+        (rows[i].game || 0) >= 3 &&
+        isAbout100(rows[i].getRaw) &&
+        (rows[i - 1].game || 0) <= 2) {
+      trueStart = i - 1;
+    }
+
+    // 新しい側へ継続ART(0〜2G以内)を辿る
+    const members = [trueStart];
+    let j = trueStart - 1;
+    while (j >= 0 && rows[j].kind === 'ART' && (rows[j].game || 0) <= 2) {
+      members.push(j);
+      j--;
+    }
+    const newestIdx = j + 1;
+
+    groups.push({ newestIdx, hasContinuation: members.length > 1 });
+    i = newestIdx - 1; // このまとまりより新しい側から再開
+  }
+
+  // ART信号が履歴中に一件もない＝設定変更後、まだATが一度も発生していない台
+  const settingChanged = groups.length === 0;
+
+  // 集計対象範囲：通常は直近の確定ATより新しい側、設定変更後の場合は履歴全体
+  const scanFrom = settingChanged ? (n - 1) : (groups[groups.length - 1].newestIdx - 1);
+  const throughAfterAT = settingChanged ? null : !groups[groups.length - 1].hasContinuation;
+
+  // --- 対象範囲のRBを古い方から見てCZスルー数・ハマリを算出 ---
+  // （直近ATより新しい側にARTがあれば、それは必ず別のATとしてgroupsに
+  //   含まれているはずなので、通常ケースでここに現れるのは常にRBのみ）
+  let slipCount = 0;
+  let hamari = 0;
+  for (let k = scanFrom; k >= 0; k--) {
+    if (rows[k].kind !== 'RB') continue; // 念のためのガード
+    if (k > 0) {
+      // 次(新しい側)の信号がRBである＝CZ失敗確定
+      slipCount++;
+      hamari += rows[k].game || 0;
+    } else {
+      // 最新のRB：現在の経過ゲーム数で判定
+      if (currentElapsed > 2) {
+        slipCount++;
+        hamari += rows[k].game || 0;
+      }
+      // currentElapsed <= 2 の場合はまだ結果未確定のため集計しない
+    }
+  }
+
+  return { insufficient: false, slipCount, hamari, throughAfterAT, kuiCount, settingChanged };
+}
+
+// pairs([ptMax,target])から、ptに対応するtargetを引く
+function pickByPt(pairs, pt){
+  for (const [ptMax, target] of pairs) {
+    if (pt <= ptMax) return target;
+  }
+  return null;
+}
+
+// stateから狙い目表を引いてtargetを返す（null='-', 数値=液晶◯◯Gから, undefined=判定不可）
+function lookupNerai(state){
+  if (state.insufficient) return undefined;
+
+  const { slipCount, hamari, throughAfterAT, kuiCount, settingChanged } = state;
+
+  // --- 設定変更後（ART信号が一度も上がっていない台） ---
+  if (settingChanged) {
+    if (slipCount === 0) return NERAI_TABLE.slip0.settingChanged; // 常に '-'
+    if (slipCount >= 4) return 0; // 4スルー以降は不問で液晶0Gから
+    const table = NERAI_TABLE['slip' + slipCount];
+    if (!table || !table.settingChanged) return undefined;
+    const bucket = table.settingChanged.find(b => hamari <= b.hamariMax) || table.settingChanged[table.settingChanged.length - 1];
+    return bucket.target;
+  }
+
+  // --- 通常（AT駆け抜け後 / AT駆け抜け後以外） ---
+  if (slipCount === 0) {
+    const pairs = throughAfterAT ? NERAI_TABLE.slip0.through : NERAI_TABLE.slip0.notThrough;
+    return pickByPt(pairs, kuiCount);
+  }
+
+  if (slipCount >= 5) {
+    return 0; // 5スルー以降は不問で液晶0Gから
+  }
+
+  const table = NERAI_TABLE['slip' + slipCount];
+  if (!table) return undefined;
+
+  const bucket = table.buckets.find(b => hamari <= b.hamariMax) || table.buckets[table.buckets.length - 1];
+  if (bucket.always !== undefined) return bucket.always;
+
+  const pairs = throughAfterAT ? bucket.through : bucket.notThrough;
+  return pickByPt(pairs, kuiCount);
+}
+
+// 表示用テキストに変換
+function formatNeraiTarget(target){
+  if (target === undefined) return { text: '判定不可', cls: 'unknown' };
+  if (target === null) return { text: '-', cls: 'no-target' };
+  return { text: '液晶' + target + 'Gから', cls: 'has-target' };
+}
+
+function getNeraiDisplay(entry){
+  const state = computeNeraiState(entry);
+  const target = lookupNerai(state);
+  return formatNeraiTarget(target);
+}
+
+/* ========================================================================== */
+
 // ▼▼▼ ここにApps ScriptのウェブアプリURLを入れてください ▼▼▼
 const API_URL = 'https://script.google.com/macros/s/AKfycbyLPgRPkHY932M2JleXKsKJ5TZKdOMBUJuOh6AwyvXTd4AssaA--zBxvr4sc_QjBNd1/exec';
 // ▲▲▲ ここにApps ScriptのウェブアプリURLを入れてください ▲▲▲
@@ -228,10 +466,11 @@ function render(){
     const tr = document.createElement('tr');
     const dt = entry.updatedAt ? new Date(entry.updatedAt) : null;
     const dtStr = dt ? (dt.getMonth()+1)+'/'+dt.getDate()+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0') : '-';
+    const nerai = getNeraiDisplay(entry);
     tr.innerHTML = '<td class="daiban-cell"><span class="daiban-link">'+(entry.daiban||'-')+'</span><div class="hall-sub">'+(entry.hallName||'-')+'</div></td>'+
       '<td>'+(entry.currentPT!=null?entry.currentPT:'-')+'pt</td>'+
-      '<td>'+dtStr+'</td>'+
-      '<td></td>';
+      '<td class="nerai-cell '+nerai.cls+'">'+nerai.text+'</td>'+
+      '<td>'+dtStr+'</td>';
     tr.addEventListener('click', () => openDetail(entry));
     listBody.appendChild(tr);
   });
@@ -241,10 +480,12 @@ function openDetail(entry){
   document.getElementById('modalTitle').textContent = (entry.modelName||'') + '｜' + entry.daiban + '番台';
   document.getElementById('modalSub').textContent = (entry.hallName||'') + '（' + (entry.prefecture||'') + (entry.city||'') + '） ／ 対象日: ' + (entry.day||'-');
 
+  const nerai = getNeraiDisplay(entry);
   const summary = document.getElementById('modalSummary');
   summary.innerHTML =
     '<div class="box"><div class="label">現在の喰ポイント</div><div class="val">'+entry.currentPT+'pt</div></div>'+
-    '<div class="box"><div class="label">現在経過ゲーム</div><div class="val">'+entry.currentElapsed+'G</div></div>';
+    '<div class="box"><div class="label">現在経過ゲーム</div><div class="val">'+entry.currentElapsed+'G</div></div>'+
+    '<div class="box"><div class="label">狙い目</div><div class="val small">'+nerai.text+'</div></div>';
 
   const table = document.getElementById('modalTable');
   let html = '<thead><tr><th>回数</th><th>種類</th><th>G</th><th>獲得</th><th>PT</th><th>累計</th></tr></thead><tbody>';
