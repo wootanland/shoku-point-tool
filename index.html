@@ -253,11 +253,11 @@ function openDetail(entry){
       table.innerHTML = '<tbody><tr><td style="padding:24px;color:#c0392b;">履歴の読み込みに失敗しました</td></tr></tbody>';
       return;
     }
-    let html = '<thead><tr><th>回数</th><th>種類</th><th>G</th><th>獲得</th><th>PT</th><th>累計</th></tr></thead><tbody>';
+    let html = '<thead><tr><th>回数</th><th>種類</th><th>G</th><th>獲得</th><th>PT</th><th>累計</th><th>差枚</th></tr></thead><tbody>';
     (detail.rows||[]).forEach(r => {
       const badgeClass = r.kind === 'ART' ? 'art' : 'rb';
       html += '<tr><td>'+(r.cnt||'-')+'</td><td><span class="badge '+badgeClass+'">'+r.kind+'</span></td>'+
-        '<td>'+r.game+'G</td><td>'+(r.getRaw||'-')+'枚</td><td>'+r.E+'</td><td>'+r.F+'</td></tr>';
+        '<td>'+r.game+'G</td><td>'+(r.getRaw||'-')+'枚</td><td>'+r.E+'</td><td>'+r.F+'</td><td>'+(r.ZD!=null?r.ZD:'-')+'</td></tr>';
     });
     html += '</tbody>';
     table.innerHTML = html;
