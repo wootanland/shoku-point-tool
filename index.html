@@ -233,12 +233,12 @@ function render(){
 
 function openDetail(entry){
   document.getElementById('modalTitle').textContent = (entry.modelName||'') + '｜' + entry.daiban + '番台';
-  document.getElementById('modalSub').textContent = (entry.hallName||'') + '（' + (entry.prefecture||'') + (entry.city||'') + '） ／ 対象日: ' + (entry.day||'-');
+  document.getElementById('modalSub').textContent = (entry.hallName||'');
 
   const nerai = getNeraiCell(entry);
   const summary = document.getElementById('modalSummary');
   summary.innerHTML =
-    '<div class="box"><div class="label">現在の喰ポイント</div><div class="val">'+entry.currentPT+'pt</div></div>'+
+    '<div class="box"><div class="label">現在の喰pt</div><div class="val">'+entry.currentPT+'pt</div></div>'+
     '<div class="box"><div class="label">現在経過ゲーム</div><div class="val">'+entry.currentElapsed+'G</div></div>'+
     '<div class="box"><div class="label">狙い目</div><div class="val small">'+nerai.text+'</div></div>';
 
