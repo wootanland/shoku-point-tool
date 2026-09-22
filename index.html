@@ -26,6 +26,9 @@
   .hall-tabs { display:flex; gap:6px; padding:8px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--border); position:sticky; top:56px; z-index:9; }
   .hall-tabs button { flex-shrink:0; border:1px solid var(--border); background:#eee; border-radius:14px; padding:6px 12px; font-size:12px; white-space:nowrap; }
   .hall-tabs button.active { background:#333; color:#fff; border-color:#333; }
+  .hall-delete-btn { margin-left:6px; color:#c0392b; font-weight:bold; padding:0 2px; }
+  .hall-tabs button.active .hall-delete-btn { color:#ff9d9d; }
+  .row-delete-btn { background:none; border:none; font-size:16px; padding:4px; cursor:pointer; }
   table.list { width:100%; border-collapse:collapse; background:#fff; }
   table.list th, table.list td { padding:10px 8px; text-align:center; border-bottom:1px solid var(--border); font-size:14px; }
   table.list th { background:#333; color:#fff; font-size:12px; }
@@ -71,7 +74,7 @@
 <div id="listWrap">
   <div id="loadingMsg" class="loading">読み込み中...</div>
   <table class="list" id="listTable" style="display:none;">
-    <thead><tr><th>台番</th><th>喰pt</th><th>狙い目</th><th>最終更新</th></tr></thead>
+    <thead><tr><th>台番</th><th>喰pt</th><th>狙い目</th><th>最終更新</th><th></th></tr></thead>
     <tbody id="listBody"></tbody>
   </table>
   <div id="emptyMsg" class="empty" style="display:none;">まだデータがありません。<br>サイトセブンの大当り履歴ページでブックマークレットを実行してください。</div>
@@ -189,9 +192,21 @@ function renderTabs(){
 
   halls.forEach(h => {
     const btn = document.createElement('button');
-    btn.textContent = h;
+    btn.className = 'hall-tab-btn';
+    btn.innerHTML = '<span>'+h+'</span><span class="hall-delete-btn" title="このホールの台を全削除">×</span>';
     if(selectedHall === h) btn.classList.add('active');
-    btn.addEventListener('click', () => { selectedHall = h; renderTabs(); render(); });
+    btn.querySelector('span:first-child').addEventListener('click', () => { selectedHall = h; renderTabs(); render(); });
+    btn.querySelector('.hall-delete-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(!confirm('「'+h+'」の登録台を全て削除します。よろしいですか？')) return;
+      callApi(API_URL, {action:'deleteHall', hallName: h}, function(err){
+        if(err){ alert('削除に失敗しました: ' + err.message); return; }
+        entries = entries.filter(e => e.hallName !== h);
+        if(selectedHall === h) selectedHall = null;
+        renderTabs();
+        render();
+      });
+    });
     tabsEl.appendChild(btn);
   });
 }
@@ -225,8 +240,19 @@ function render(){
     tr.innerHTML = '<td class="daiban-cell"><span class="daiban-link">'+(entry.daiban||'-')+'</span><div class="hall-sub">'+(entry.hallName||'-')+'</div></td>'+
       '<td>'+(entry.currentPT!=null?entry.currentPT:'-')+'pt</td>'+
       '<td class="nerai-cell '+nerai.cls+'">'+nerai.text+'</td>'+
-      '<td>'+dtStr+'</td>';
+      '<td>'+dtStr+'</td>'+
+      '<td><button class="row-delete-btn" title="この台を削除">🗑️</button></td>';
     tr.addEventListener('click', () => openDetail(entry));
+    tr.querySelector('.row-delete-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(!confirm(entry.daiban+'番台のデータを削除します。よろしいですか？')) return;
+      callApi(API_URL, {action:'deleteOne', hallName: entry.hallName||'', daiban: entry.daiban||''}, function(err){
+        if(err){ alert('削除に失敗しました: ' + err.message); return; }
+        entries = entries.filter(e => !(e.hallName === entry.hallName && e.daiban === entry.daiban));
+        renderTabs();
+        render();
+      });
+    });
     listBody.appendChild(tr);
   });
 }
