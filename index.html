@@ -25,7 +25,7 @@
   #resetBtn { background:#c0392b; color:#fff; }
   #selectModeBtn { background:#555; color:#fff; }
   #selectModeBtn.active { background:#f5820d; }
-  .selection-bar { display:flex; align-items:center; justify-content:space-between; background:#fff3e0; border-bottom:1px solid var(--border); padding:8px 16px; position:sticky; top:56px; z-index:9; font-size:13px; }
+  .selection-bar { display:flex; align-items:center; justify-content:space-between; background:#fff3e0; border-bottom:1px solid var(--border); padding:8px 16px; position:fixed; left:0; right:0; z-index:15; font-size:13px; box-shadow:0 2px 6px rgba(0,0,0,0.15); }
   .selection-bar-btns { display:flex; gap:8px; }
   .selection-bar-btns button { border:none; border-radius:6px; padding:6px 12px; font-size:13px; }
   #selectionDeleteBtn { background:#c0392b; color:#fff; }
@@ -334,11 +334,28 @@ function updateSelectionBar(){
   document.getElementById('selectionCount').textContent = selectedKeys.size + '件選択中';
 }
 
+function layoutSelectionBar(){
+  const bar = document.getElementById('selectionBar');
+  const hallTabs = document.getElementById('hallTabs');
+  if(selectionMode){
+    const headerH = document.querySelector('header').offsetHeight;
+    bar.style.top = headerH + 'px';
+    const barH = bar.offsetHeight;
+    hallTabs.style.top = (headerH + barH) + 'px';
+    hallTabs.style.marginTop = barH + 'px';
+  } else {
+    bar.style.top = '';
+    hallTabs.style.top = '';
+    hallTabs.style.marginTop = '';
+  }
+}
+
 function exitSelectionMode(){
   selectionMode = false;
   selectedKeys.clear();
   document.getElementById('selectModeBtn').classList.remove('active');
   document.getElementById('selectionBar').style.display = 'none';
+  layoutSelectionBar();
   render();
 }
 
@@ -347,6 +364,7 @@ document.getElementById('selectModeBtn').addEventListener('click', () => {
   selectedKeys.clear();
   document.getElementById('selectModeBtn').classList.toggle('active', selectionMode);
   document.getElementById('selectionBar').style.display = selectionMode ? 'flex' : 'none';
+  layoutSelectionBar();
   updateSelectionBar();
   render();
 });
