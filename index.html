@@ -28,7 +28,15 @@
   .hall-tabs button.active { background:#333; color:#fff; border-color:#333; }
   .hall-delete-btn { margin-left:6px; color:#c0392b; font-weight:bold; padding:0 2px; }
   .hall-tabs button.active .hall-delete-btn { color:#ff9d9d; }
-  .row-delete-btn { background:none; border:none; font-size:16px; padding:4px; cursor:pointer; }
+  .row-delete-btn { background:none; border:none; font-size:18px; padding:4px 8px; cursor:pointer; color:#c0392b; font-weight:bold; line-height:1; }
+  .confirm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:center; justify-content:center; z-index:2000; padding:20px; }
+  .confirm-overlay.show { display:flex; }
+  .confirm-box { background:#fff; border-radius:12px; max-width:320px; width:100%; padding:20px; text-align:center; }
+  .confirm-msg { font-size:14px; margin-bottom:16px; white-space:pre-line; }
+  .confirm-actions { display:flex; gap:10px; }
+  .confirm-actions button { flex:1; border:none; border-radius:8px; padding:10px; font-size:14px; }
+  .confirm-cancel-btn { background:#eee; color:#333; }
+  .confirm-ok-btn { background:#c0392b; color:#fff; }
   table.list { width:100%; border-collapse:collapse; background:#fff; }
   table.list th, table.list td { padding:10px 8px; text-align:center; border-bottom:1px solid var(--border); font-size:14px; }
   table.list th { background:#333; color:#fff; font-size:12px; }
@@ -80,6 +88,16 @@
   <div id="emptyMsg" class="empty" style="display:none;">まだデータがありません。<br>サイトセブンの大当り履歴ページでブックマークレットを実行してください。</div>
 </div>
 
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <div class="confirm-msg" id="confirmMsg"></div>
+    <div class="confirm-actions">
+      <button class="confirm-cancel-btn" id="confirmCancelBtn">キャンセル</button>
+      <button class="confirm-ok-btn" id="confirmOkBtn">削除</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
     <div class="modal-close"><button id="closeBtn">閉じる</button></div>
@@ -100,6 +118,24 @@ function getNeraiCell(entry){
   if (t === '判定不可') return { text: t, cls: 'unknown' };
   if (t === '-') return { text: t, cls: 'no-target' };
   return { text: t, cls: 'has-target' };
+}
+
+// 独自の確認ダイアログ（ブラウザ標準confirm()の代わり）
+function showConfirm(message, onConfirm){
+  const overlay = document.getElementById('confirmOverlay');
+  document.getElementById('confirmMsg').textContent = message;
+  overlay.classList.add('show');
+  const okBtn = document.getElementById('confirmOkBtn');
+  const cancelBtn = document.getElementById('confirmCancelBtn');
+  function cleanup(){
+    overlay.classList.remove('show');
+    okBtn.removeEventListener('click', onOk);
+    cancelBtn.removeEventListener('click', onCancel);
+  }
+  function onOk(){ cleanup(); onConfirm(); }
+  function onCancel(){ cleanup(); }
+  okBtn.addEventListener('click', onOk);
+  cancelBtn.addEventListener('click', onCancel);
 }
 
 // ▼▼▼ ここにApps ScriptのウェブアプリURLを入れてください ▼▼▼
@@ -198,13 +234,14 @@ function renderTabs(){
     btn.querySelector('span:first-child').addEventListener('click', () => { selectedHall = h; renderTabs(); render(); });
     btn.querySelector('.hall-delete-btn').addEventListener('click', (e) => {
       e.stopPropagation();
-      if(!confirm('「'+h+'」の登録台を全て削除します。よろしいですか？')) return;
-      callApi(API_URL, {action:'deleteHall', hallName: h}, function(err){
-        if(err){ alert('削除に失敗しました: ' + err.message); return; }
-        entries = entries.filter(e => e.hallName !== h);
-        if(selectedHall === h) selectedHall = null;
-        renderTabs();
-        render();
+      showConfirm('「'+h+'」の登録台を全て削除します。よろしいですか？', () => {
+        callApi(API_URL, {action:'deleteHall', hallName: h}, function(err){
+          if(err){ alert('削除に失敗しました: ' + err.message); return; }
+          entries = entries.filter(e => e.hallName !== h);
+          if(selectedHall === h) selectedHall = null;
+          renderTabs();
+          render();
+        });
       });
     });
     tabsEl.appendChild(btn);
@@ -241,16 +278,17 @@ function render(){
       '<td>'+(entry.currentPT!=null?entry.currentPT:'-')+'pt</td>'+
       '<td class="nerai-cell '+nerai.cls+'">'+nerai.text+'</td>'+
       '<td>'+dtStr+'</td>'+
-      '<td><button class="row-delete-btn" title="この台を削除">🗑️</button></td>';
+      '<td><button class="row-delete-btn" title="この台を削除">×</button></td>';
     tr.addEventListener('click', () => openDetail(entry));
     tr.querySelector('.row-delete-btn').addEventListener('click', (e) => {
       e.stopPropagation();
-      if(!confirm(entry.daiban+'番台のデータを削除します。よろしいですか？')) return;
-      callApi(API_URL, {action:'deleteOne', hallName: entry.hallName||'', daiban: entry.daiban||''}, function(err){
-        if(err){ alert('削除に失敗しました: ' + err.message); return; }
-        entries = entries.filter(e => !(e.hallName === entry.hallName && e.daiban === entry.daiban));
-        renderTabs();
-        render();
+      showConfirm(entry.daiban+'番台のデータを削除します。よろしいですか？', () => {
+        callApi(API_URL, {action:'deleteOne', hallName: entry.hallName||'', daiban: entry.daiban||''}, function(err){
+          if(err){ alert('削除に失敗しました: ' + err.message); return; }
+          entries = entries.filter(e => !(e.hallName === entry.hallName && e.daiban === entry.daiban));
+          renderTabs();
+          render();
+        });
       });
     });
     listBody.appendChild(tr);
@@ -300,12 +338,12 @@ document.getElementById('modalOverlay').addEventListener('click', (e) => {
 document.getElementById('refreshBtn').addEventListener('click', fetchList);
 
 document.getElementById('resetBtn').addEventListener('click', () => {
-  if(confirm('サーバー上の全データを削除します。よろしいですか？')){
+  showConfirm('サーバー上の全データを削除します。よろしいですか？', () => {
     callApi(API_URL, {action:'reset'}, function(err){
       if(err){ alert('削除に失敗しました: ' + err.message); return; }
       fetchList();
     });
-  }
+  });
 });
 
 fetchList();
