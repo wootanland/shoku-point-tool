@@ -23,6 +23,16 @@
   header button { border:none; border-radius:6px; padding:8px 12px; font-size:13px; }
   #refreshBtn { background:#2563eb; color:#fff; }
   #resetBtn { background:#c0392b; color:#fff; }
+  #selectModeBtn { background:#555; color:#fff; }
+  #selectModeBtn.active { background:#f5820d; }
+  .selection-bar { display:flex; align-items:center; justify-content:space-between; background:#fff3e0; border-bottom:1px solid var(--border); padding:8px 16px; position:sticky; top:56px; z-index:9; font-size:13px; }
+  .selection-bar-btns { display:flex; gap:8px; }
+  .selection-bar-btns button { border:none; border-radius:6px; padding:6px 12px; font-size:13px; }
+  #selectionDeleteBtn { background:#c0392b; color:#fff; }
+  #selectionCancelBtn { background:#eee; color:#333; }
+  .row-checkbox { width:20px; height:20px; }
+  #theadSelectAll { width:32px; }
+  td.checkbox-cell { width:32px; }
   .hall-tabs { display:flex; gap:6px; padding:8px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--border); position:sticky; top:56px; z-index:9; }
   .hall-tabs button { flex-shrink:0; border:1px solid var(--border); background:#eee; border-radius:14px; padding:6px 12px; font-size:12px; white-space:nowrap; }
   .hall-tabs button.active { background:#333; color:#fff; border-color:#333; }
@@ -74,15 +84,23 @@
 <header>
   <h1>喰ポイント管理ツール</h1>
   <div class="btns">
+    <button id="selectModeBtn">選択削除</button>
     <button id="refreshBtn">更新</button>
     <button id="resetBtn">リセット</button>
   </div>
 </header>
+<div id="selectionBar" class="selection-bar" style="display:none;">
+  <span id="selectionCount">0件選択中</span>
+  <div class="selection-bar-btns">
+    <button id="selectionDeleteBtn">削除</button>
+    <button id="selectionCancelBtn">キャンセル</button>
+  </div>
+</div>
 <div id="hallTabs" class="hall-tabs" style="display:none;"></div>
 <div id="listWrap">
   <div id="loadingMsg" class="loading">読み込み中...</div>
   <table class="list" id="listTable" style="display:none;">
-    <thead><tr><th>台番</th><th>喰pt</th><th>狙い目</th><th>最終更新</th><th></th></tr></thead>
+    <thead><tr><th id="theadSelectAll"></th><th>台番</th><th>喰pt</th><th>狙い目</th><th>最終更新</th><th></th></tr></thead>
     <tbody id="listBody"></tbody>
   </table>
   <div id="emptyMsg" class="empty" style="display:none;">まだデータがありません。<br>サイトセブンの大当り履歴ページでブックマークレットを実行してください。</div>
@@ -190,6 +208,9 @@ function callApi(url, params, callback){
 
 let entries = [];
 let selectedHall = null; // null = すべて
+let selectionMode = false;
+let selectedKeys = new Set(); // 'hallName|daiban'
+function entryKey(e){ return (e.hallName||'') + '|' + (e.daiban||''); }
 
 function fetchList(){
   document.getElementById('loadingMsg').style.display = 'block';
@@ -274,26 +295,79 @@ function render(){
     const dt = entry.updatedAt ? new Date(entry.updatedAt) : null;
     const dtStr = dt ? (dt.getMonth()+1)+'/'+dt.getDate()+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0') : '-';
     const nerai = getNeraiCell(entry);
-    tr.innerHTML = '<td class="daiban-cell"><span class="daiban-link">'+(entry.daiban||'-')+'</span><div class="hall-sub">'+(entry.hallName||'-')+'</div></td>'+
+    const key = entryKey(entry);
+    const checkboxCell = selectionMode
+      ? '<td class="checkbox-cell"><input type="checkbox" class="row-checkbox"'+(selectedKeys.has(key)?' checked':'')+'></td>'
+      : '<td class="checkbox-cell"></td>';
+    const actionCell = selectionMode ? '<td></td>' : '<td><button class="row-delete-btn" title="この台を削除">×</button></td>';
+    tr.innerHTML = checkboxCell +
+      '<td class="daiban-cell"><span class="daiban-link">'+(entry.daiban||'-')+'</span><div class="hall-sub">'+(entry.hallName||'-')+'</div></td>'+
       '<td>'+(entry.currentPT!=null?entry.currentPT:'-')+'pt</td>'+
       '<td class="nerai-cell '+nerai.cls+'">'+nerai.text+'</td>'+
       '<td>'+dtStr+'</td>'+
-      '<td><button class="row-delete-btn" title="この台を削除">×</button></td>';
-    tr.addEventListener('click', () => openDetail(entry));
-    tr.querySelector('.row-delete-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      showConfirm(entry.daiban+'番台のデータを削除します。よろしいですか？', () => {
-        callApi(API_URL, {action:'deleteOne', hallName: entry.hallName||'', daiban: entry.daiban||''}, function(err){
-          if(err){ alert('削除に失敗しました: ' + err.message); return; }
-          entries = entries.filter(e => !(e.hallName === entry.hallName && e.daiban === entry.daiban));
-          renderTabs();
-          render();
+      actionCell;
+    if(selectionMode){
+      tr.addEventListener('click', () => {
+        if(selectedKeys.has(key)) selectedKeys.delete(key); else selectedKeys.add(key);
+        updateSelectionBar();
+        render();
+      });
+    } else {
+      tr.addEventListener('click', () => openDetail(entry));
+      tr.querySelector('.row-delete-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        showConfirm(entry.daiban+'番台のデータを削除します。よろしいですか？', () => {
+          callApi(API_URL, {action:'deleteOne', hallName: entry.hallName||'', daiban: entry.daiban||''}, function(err){
+            if(err){ alert('削除に失敗しました: ' + err.message); return; }
+            entries = entries.filter(e => !(e.hallName === entry.hallName && e.daiban === entry.daiban));
+            renderTabs();
+            render();
+          });
         });
       });
-    });
+    }
     listBody.appendChild(tr);
   });
 }
+
+function updateSelectionBar(){
+  document.getElementById('selectionCount').textContent = selectedKeys.size + '件選択中';
+}
+
+function exitSelectionMode(){
+  selectionMode = false;
+  selectedKeys.clear();
+  document.getElementById('selectModeBtn').classList.remove('active');
+  document.getElementById('selectionBar').style.display = 'none';
+  render();
+}
+
+document.getElementById('selectModeBtn').addEventListener('click', () => {
+  selectionMode = !selectionMode;
+  selectedKeys.clear();
+  document.getElementById('selectModeBtn').classList.toggle('active', selectionMode);
+  document.getElementById('selectionBar').style.display = selectionMode ? 'flex' : 'none';
+  updateSelectionBar();
+  render();
+});
+
+document.getElementById('selectionCancelBtn').addEventListener('click', exitSelectionMode);
+
+document.getElementById('selectionDeleteBtn').addEventListener('click', () => {
+  if(selectedKeys.size === 0) return;
+  showConfirm(selectedKeys.size+'件のデータを削除します。よろしいですか？', () => {
+    const items = Array.from(selectedKeys).map(k => {
+      const idx = k.indexOf('|');
+      return { hallName: k.slice(0, idx), daiban: k.slice(idx + 1) };
+    });
+    callApi(API_URL, {action:'deleteMany', items: JSON.stringify(items)}, function(err){
+      if(err){ alert('削除に失敗しました: ' + err.message); return; }
+      entries = entries.filter(e => !selectedKeys.has(entryKey(e)));
+      exitSelectionMode();
+      renderTabs();
+    });
+  });
+});
 
 function openDetail(entry){
   document.getElementById('modalTitle').textContent = (entry.modelName||'') + '｜' + entry.daiban + '番台';
