@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         喰ポイント取得ボタン（サイトセブン / 台データオンライン）
 // @namespace    wootanland.shoku-point-tool
-// @version      1.5
+// @version      1.6
 // @description  ページ右下に喰ポイント取得ボタンを表示し、タップで現在の喰ポイントを計算してツールに送信します
 // @match        https://*.site777.jp/f/D3100.do*
 // @match        https://daidata.goraggio.com/*/detail*
@@ -463,57 +463,50 @@
     if (document.getElementById('shoku-point-float-btn')) return; // 二重設置防止
     const btn = document.createElement('button');
     btn.id = 'shoku-point-float-btn';
+    btn.textContent = '喰pt\n取得';
     btn.style.background = '#2563eb';
     btn.style.color = '#fff';
     btn.style.border = 'none';
     btn.style.fontWeight = 'bold';
     btn.style.boxShadow = '0 2px 10px rgba(0,0,0,0.4)';
     btn.style.cursor = 'pointer';
+    btn.style.position = 'fixed';
+    btn.style.zIndex = 999997;
+    btn.style.lineHeight = '1.2';
+    btn.style.whiteSpace = 'pre';
     btn.addEventListener('click', runAll);
 
-    // テラモバ系のページは、固定位置だとサイト側のボタン類と被るため、
-    // 「当り履歴」の見出しバー（クリック不要な余白部分）に埋め込む
-    const teramobaAnchor = window.location.hostname.indexOf('teramoba2.com') !== -1
-      ? document.querySelector('.box-bonus_history h1.title-base')
-      : null;
+    // テラモバ系のページは、サイト自身の「トップへ戻る」ボタン(#topcontrol、常に
+    // 画面右下に固定表示)のすぐ上に、実際の座標を取得して配置する（他のUIと被らない）
+    const isTeramoba = window.location.hostname.indexOf('teramoba2.com') !== -1;
+    const topControl = isTeramoba ? document.querySelector('#topcontrol') : null;
 
-    if (teramobaAnchor) {
-      btn.textContent = '喰pt取得';
-      teramobaAnchor.style.position = 'relative';
-      btn.style.position = 'absolute';
-      btn.style.right = '8px';
-      btn.style.top = '50%';
-      btn.style.transform = 'translateY(-50%)';
-      btn.style.width = 'auto';
-      btn.style.height = '32px';
-      btn.style.padding = '0 10px';
-      btn.style.borderRadius = '16px';
+    if (topControl) {
+      const rect = topControl.getBoundingClientRect();
+      btn.style.right = '5px';
+      btn.style.bottom = Math.max(8, window.innerHeight - rect.top + 8) + 'px';
+      btn.style.width = '54px';
+      btn.style.height = '54px';
+      btn.style.borderRadius = '50%';
       btn.style.fontSize = '11px';
-      btn.style.zIndex = 10;
-      teramobaAnchor.appendChild(btn);
     } else {
-      btn.textContent = '喰pt\n取得';
-      btn.style.position = 'fixed';
       btn.style.right = '16px';
       btn.style.bottom = '16px';
       btn.style.width = '58px';
       btn.style.height = '58px';
       btn.style.borderRadius = '50%';
       btn.style.fontSize = '12px';
-      btn.style.lineHeight = '1.2';
-      btn.style.whiteSpace = 'pre';
-      btn.style.zIndex = 999997;
-      document.body.appendChild(btn);
     }
+    document.body.appendChild(btn);
   }
 
   // テラモバ系はSPA（JSで後から中身を描画するサイト）なので、
-  // スクリプト実行時点では「当り履歴」の見出しがまだDOMに無いことがある。
-  // 見出しが現れるまで少し待ってから埋め込む（最大約6秒）
+  // スクリプト実行時点では#topcontrolがまだDOMに無いことがある。
+  // 現れるまで少し待つ（最大約3秒。#topcontrol自体はページの静的な部分なので通常は待たずに見つかる）
   function injectButtonWithRetry(attemptsLeft) {
     const isTeramoba = window.location.hostname.indexOf('teramoba2.com') !== -1;
-    if (attemptsLeft === undefined) attemptsLeft = 20;
-    if (isTeramoba && !document.querySelector('.box-bonus_history h1.title-base') && attemptsLeft > 0) {
+    if (attemptsLeft === undefined) attemptsLeft = 10;
+    if (isTeramoba && !document.querySelector('#topcontrol') && attemptsLeft > 0) {
       setTimeout(function () { injectButtonWithRetry(attemptsLeft - 1); }, 300);
       return;
     }
