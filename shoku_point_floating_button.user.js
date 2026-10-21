@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         喰ポイント取得ボタン（サイトセブン / 台データオンライン）
 // @namespace    wootanland.shoku-point-tool
-// @version      1.7
+// @version      1.8
 // @description  ページ右下に喰ポイント取得ボタンを表示し、タップで現在の喰ポイントを計算してツールに送信します
 // @match        https://*.site777.jp/f/D3100.do*
 // @match        https://daidata.goraggio.com/*/detail*
@@ -504,7 +504,8 @@
     if (topControl) {
       const rect = topControl.getBoundingClientRect();
       btn.style.right = '5px';
-      btn.style.bottom = Math.max(8, window.innerHeight - rect.top + 8) + 'px';
+      // ボタン1つ分(54px)+すき間(8px)だけ、さらに上に上げる(下端のUIと重ならないように)
+      btn.style.bottom = (Math.max(8, window.innerHeight - rect.top + 8) + 62) + 'px';
       btn.style.width = '54px';
       btn.style.height = '54px';
       btn.style.borderRadius = '50%';
