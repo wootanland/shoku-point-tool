@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         喰ポイント取得ボタン（サイトセブン / 台データオンライン）
 // @namespace    wootanland.shoku-point-tool
-// @version      1.6
+// @version      1.7
 // @description  ページ右下に喰ポイント取得ボタンを表示し、タップで現在の喰ポイントを計算してツールに送信します
 // @match        https://*.site777.jp/f/D3100.do*
 // @match        https://daidata.goraggio.com/*/detail*
@@ -51,12 +51,12 @@
     const cbName = 'jsonp_cb_' + Math.random().toString(36).slice(2);
     const script = document.createElement('script');
     let done = false;
-    window[cbName] = function () {
+    window[cbName] = function (d) {
       if (done) return;
       done = true;
       delete window[cbName];
       if (script.parentNode) script.parentNode.removeChild(script);
-      cb(true);
+      if (d && d.error) { clearApiKey(); cb(false); } else { cb(true); }
     };
     script.onerror = function () {
       if (done) return;
@@ -78,11 +78,31 @@
     }, 8000);
   }
 
+  // 管理用キー(Apps Scriptの API_KEY と同じもの)。初回だけ入力して、このサイトの端末内に保存する
+  function getApiKey() {
+    let k = '';
+    try { k = localStorage.getItem('shokuApiKey') || ''; } catch (e) {}
+    if (!k) {
+      k = (prompt('管理用キーを入力してください') || '').trim();
+      if (k) { try { localStorage.setItem('shokuApiKey', k); } catch (e) {} }
+    }
+    return k;
+  }
+
+  function clearApiKey() {
+    try { localStorage.removeItem('shokuApiKey'); } catch (e) {}
+  }
+
   function sendToApi(action, payload, cb) {
-    const qs = 'action=' + action + '&data=' + encodeURIComponent(JSON.stringify(payload));
+    const key = getApiKey();
+    const data = JSON.stringify(payload);
+    const qs = 'action=' + action + '&key=' + encodeURIComponent(key) + '&data=' + encodeURIComponent(data);
     fetch(API_URL + '?' + qs, { method: 'GET' })
-      .then(function (r) { cb(r.ok); })
-      .catch(function () { jsonp(API_URL, { action: action, data: JSON.stringify(payload) }, cb); });
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.error) { clearApiKey(); cb(false); } else { cb(true); }
+      })
+      .catch(function () { jsonp(API_URL, { action: action, key: key, data: data }, cb); });
   }
 
   // ---- 喰ポイント・差枚 判定ロジック（両サイト共通） ----------------------
@@ -241,7 +261,7 @@
 
     showToast('現在の喰ポイント：' + currentPT + 'pt', true);
     sendToApi('upsert', toolPayload, function (ok) {
-      if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
+      if (!ok) showToast('⚠️ツールへの送信に失敗しました(キーが違う場合は、もう一度押すとキーを聞かれます)', false);
     });
   }
 
@@ -327,7 +347,7 @@
       };
 
       sendToApi('upsert', toolPayload, function (ok) {
-        if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
+        if (!ok) showToast('⚠️ツールへの送信に失敗しました(キーが違う場合は、もう一度押すとキーを聞かれます)', false);
       });
     }
 
@@ -412,7 +432,7 @@
       };
 
       sendToApi('upsert', toolPayload, function (ok) {
-        if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
+        if (!ok) showToast('⚠️ツールへの送信に失敗しました(キーが違う場合は、もう一度押すとキーを聞かれます)', false);
       });
     }
 
