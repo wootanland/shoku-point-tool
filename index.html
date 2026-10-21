@@ -187,7 +187,35 @@ function jsonp(url, params, callback){
 }
 
 // まずfetchで試し、失敗したらJSONPにフォールバックする
+function getApiKey(){
+  let k = '';
+  try { k = localStorage.getItem('shokuApiKey') || ''; } catch(e){}
+  if(!k){
+    k = (prompt('管理用キーを入力してください') || '').trim();
+    if(k){ try { localStorage.setItem('shokuApiKey', k); } catch(e){} }
+  }
+  return k;
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+// キー付きでAPIを呼ぶ。キーが違う場合は保存済みキーを消して、エラーを返す
 function callApi(url, params, callback){
+  params = Object.assign({ key: getApiKey() }, params);
+  callApiRaw(url, params, function(err, data){
+    if(!err && data && data.error === 'unauthorized'){
+      try { localStorage.removeItem('shokuApiKey'); } catch(e){}
+      callback(new Error('キーが違います。もう一度操作すると、キーを聞かれます'));
+      return;
+    }
+    callback(err, data);
+  });
+}
+function callApiRaw(url, params, callback){
   const qs = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
   fetch(url + '?' + qs, { method: 'GET' })
     .then(function(r){
@@ -250,7 +278,7 @@ function renderTabs(){
   halls.forEach(h => {
     const btn = document.createElement('button');
     btn.className = 'hall-tab-btn';
-    btn.innerHTML = '<span>'+h+'</span><span class="hall-delete-btn" title="このホールの台を全削除">×</span>';
+    btn.innerHTML = '<span>'+esc(h)+'</span><span class="hall-delete-btn" title="このホールの台を全削除">×</span>';
     if(selectedHall === h) btn.classList.add('active');
     btn.querySelector('span:first-child').addEventListener('click', () => { selectedHall = h; renderTabs(); render(); });
     btn.querySelector('.hall-delete-btn').addEventListener('click', (e) => {
@@ -301,9 +329,9 @@ function render(){
       : '<td class="checkbox-cell"></td>';
     const actionCell = selectionMode ? '<td></td>' : '<td><button class="row-delete-btn" title="この台を削除">×</button></td>';
     tr.innerHTML = checkboxCell +
-      '<td class="daiban-cell"><span class="daiban-link">'+(entry.daiban||'-')+'</span><div class="hall-sub">'+(entry.hallName||'-')+'</div></td>'+
-      '<td>'+(entry.currentPT!=null?entry.currentPT:'-')+'pt</td>'+
-      '<td class="nerai-cell '+nerai.cls+'">'+nerai.text+'</td>'+
+      '<td class="daiban-cell"><span class="daiban-link">'+esc(entry.daiban||'-')+'</span><div class="hall-sub">'+esc(entry.hallName||'-')+'</div></td>'+
+      '<td>'+esc(entry.currentPT!=null?entry.currentPT:'-')+'pt</td>'+
+      '<td class="nerai-cell '+nerai.cls+'">'+esc(nerai.text)+'</td>'+
       '<td>'+dtStr+'</td>'+
       actionCell;
     if(selectionMode){
@@ -394,9 +422,9 @@ function openDetail(entry){
   const nerai = getNeraiCell(entry);
   const summary = document.getElementById('modalSummary');
   summary.innerHTML =
-    '<div class="box"><div class="label">現在の喰pt</div><div class="val">'+entry.currentPT+'pt</div></div>'+
-    '<div class="box"><div class="label">現在経過ゲーム</div><div class="val">'+entry.currentElapsed+'G</div></div>'+
-    '<div class="box"><div class="label">狙い目</div><div class="val small">'+nerai.text+'</div></div>';
+    '<div class="box"><div class="label">現在の喰pt</div><div class="val">'+esc(entry.currentPT)+'pt</div></div>'+
+    '<div class="box"><div class="label">現在経過ゲーム</div><div class="val">'+esc(entry.currentElapsed)+'G</div></div>'+
+    '<div class="box"><div class="label">狙い目</div><div class="val small">'+esc(nerai.text)+'</div></div>';
 
   const table = document.getElementById('modalTable');
   table.innerHTML = '<tbody><tr><td style="padding:24px;color:#777;">読み込み中...</td></tr></tbody>';
@@ -412,8 +440,8 @@ function openDetail(entry){
     let html = '<thead><tr><th>回数</th><th>種類</th><th>G</th><th>獲得</th><th>PT</th><th>累計</th><th>差枚</th></tr></thead><tbody>';
     (detail.rows||[]).forEach(r => {
       const badgeClass = r.kind === 'ART' ? 'art' : 'rb';
-      html += '<tr><td>'+(r.cnt||'-')+'</td><td><span class="badge '+badgeClass+'">'+r.kind+'</span></td>'+
-        '<td>'+r.game+'G</td><td>'+(r.getRaw||'-')+'枚</td><td>'+r.E+'</td><td>'+r.F+'</td><td>'+(r.ZD!=null?r.ZD:'-')+'</td></tr>';
+      html += '<tr><td>'+esc(r.cnt||'-')+'</td><td><span class="badge '+badgeClass+'">'+esc(r.kind)+'</span></td>'+
+        '<td>'+esc(r.game)+'G</td><td>'+esc(r.getRaw||'-')+'枚</td><td>'+esc(r.E)+'</td><td>'+esc(r.F)+'</td><td>'+esc(r.ZD!=null?r.ZD:'-')+'</td></tr>';
     });
     html += '</tbody>';
     table.innerHTML = html;
