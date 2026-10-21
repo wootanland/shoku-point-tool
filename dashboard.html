@@ -95,7 +95,35 @@ function jsonp(url, params, callback){
   }, 10000);
 }
 
+function getApiKey(){
+  let k = '';
+  try { k = localStorage.getItem('shokuApiKey') || ''; } catch(e){}
+  if(!k){
+    k = (prompt('管理用キーを入力してください') || '').trim();
+    if(k){ try { localStorage.setItem('shokuApiKey', k); } catch(e){} }
+  }
+  return k;
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+// キー付きでAPIを呼ぶ。キーが違う場合は保存済みキーを消して、エラーを返す
 function callApi(url, params, callback){
+  params = Object.assign({ key: getApiKey() }, params);
+  callApiRaw(url, params, function(err, data){
+    if(!err && data && data.error === 'unauthorized'){
+      try { localStorage.removeItem('shokuApiKey'); } catch(e){}
+      callback(new Error('キーが違います。もう一度操作すると、キーを聞かれます'));
+      return;
+    }
+    callback(err, data);
+  });
+}
+function callApiRaw(url, params, callback){
   const qs = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
   fetch(url + '?' + qs, { method: 'GET' })
     .then(function(r){ if(!r.ok) throw new Error('http ' + r.status); return r.json(); })
@@ -160,17 +188,19 @@ function copyToClipboardAndOpenTab(text, label){
   }
 }
 
+function safeUrl(u){ return /^https:\/\//i.test(String(u || '')) ? String(u) : ''; }
+
 function buildDaiLinks(entry){
   if(entry.siteType === 'daidata' || entry.siteType === 'teramoba'){
     return {
-      detail: entry.siteUrl || '',
+      detail: safeUrl(entry.siteUrl),
       history: null,
       suii: null
     };
   }
-  const pmc = entry.pmc, mdc = entry.mdc, dn = entry.daiban, urt = entry.urt || '2173';
+  const pmc = encodeURIComponent(entry.pmc), mdc = encodeURIComponent(entry.mdc), dn = encodeURIComponent(entry.daiban), urt = encodeURIComponent(entry.urt || '2173');
   return {
-    detail: entry.siteUrl || ('https://m.site777.jp/f/D4000.do?pmc='+pmc+'&mdc='+mdc+'&dtdd=0&dn='+dn),
+    detail: safeUrl(entry.siteUrl) || ('https://m.site777.jp/f/D4000.do?pmc='+pmc+'&mdc='+mdc+'&dtdd=0&dn='+dn),
     history: 'https://m.site777.jp/f/D3100.do?pmc='+pmc+'&dtdd=0&dn='+dn+'&mdc='+mdc,
     suii: 'https://m.site777.jp/f/D3000.do?pmc='+pmc+'&gc=2&dn='+dn+'&urt='+urt+'&mdc='+mdc+'&dsgk=0&dtdd=0'
   };
@@ -179,11 +209,11 @@ function buildDaiLinks(entry){
 function buildGroupLinks(entry){
   if(entry.siteType === 'daidata' || entry.siteType === 'teramoba'){
     return {
-      list: entry.listUrl || '',
-      suiiList: entry.suiiListUrl || ''
+      list: safeUrl(entry.listUrl),
+      suiiList: safeUrl(entry.suiiListUrl)
     };
   }
-  const pmc = entry.pmc, mdc = entry.mdc, urt = entry.urt || '2173';
+  const pmc = encodeURIComponent(entry.pmc), mdc = encodeURIComponent(entry.mdc), urt = encodeURIComponent(entry.urt || '2173');
   return {
     list: 'https://m.site777.jp/f/D3300.do?pmc='+pmc+'&mdc='+mdc+'&bn=1&soc=1&sw=1&pan=1&urt='+urt+'&dtdd=0',
     suiiList: 'https://m.site777.jp/f/D4300.do?pmc='+pmc+'&mdc='+mdc+'&bn=1&pan=1&urt='+urt+'&dsgk=0&dtdd=0'
@@ -195,6 +225,7 @@ function isValidEntry(e){
   if(e.siteType === 'daidata' || e.siteType === 'teramoba') return !!e.siteUrl;
   return !!(e.pmc && e.mdc);
 }
+let allEntries = [];
 let selectedHall = null; // null = 全て
 let reorderMode = false;
 
@@ -354,8 +385,8 @@ function render(){
     head.innerHTML =
       '<span class="toggle">−</span>'+
       '<div style="flex:1;min-width:0;">'+
-        '<div class="model">'+(first.modelName||'')+'</div>'+
-        '<div class="hall">'+(first.hallName||'')+'</div>'+
+        '<div class="model">'+esc(first.modelName||'')+'</div>'+
+        '<div class="hall">'+esc(first.hallName||'')+'</div>'+
       '</div>'+
       (reorderMode ? '<div class="group-move"><button class="mv-up" '+(idx===0?'disabled':'')+'>▲</button><button class="mv-down" '+(idx===order.length-1?'disabled':'')+'>▼</button></div>' : '')+
       '<button class="group-suii">推移一覧</button>'+
@@ -375,15 +406,15 @@ function render(){
       const row = document.createElement('div');
       row.className = 'dai-row';
       const historyBtn = dlinks.history
-        ? '<button class="lnk-history" data-url="'+dlinks.history.replace(/"/g,'&quot;')+'" data-label="大当り履歴">履歴</button>'
+        ? '<button class="lnk-history" data-url="'+esc(dlinks.history)+'" data-label="大当り履歴">履歴</button>'
         : '<button class="lnk-history" disabled style="opacity:0.35;">履歴</button>';
       const suiiBtn = dlinks.suii
-        ? '<button class="lnk-suii" data-url="'+dlinks.suii.replace(/"/g,'&quot;')+'" data-label="出玉推移">出玉</button>'
+        ? '<button class="lnk-suii" data-url="'+esc(dlinks.suii)+'" data-label="出玉推移">出玉</button>'
         : '<button class="lnk-suii" disabled style="opacity:0.35;">出玉</button>';
       row.innerHTML =
-        '<div class="dn">'+(entry.daibanDisplay||entry.daiban)+'</div>'+
+        '<div class="dn">'+esc(entry.daibanDisplay||entry.daiban)+'</div>'+
         '<div class="links">'+
-          '<button class="lnk-detail" data-url="'+(dlinks.detail||'').replace(/"/g,'&quot;')+'" data-label="出玉詳細"'+((entry.siteType==='daidata'||entry.siteType==='teramoba')?' data-direct="1"':'')+'>詳細</button>'+
+          '<button class="lnk-detail" data-url="'+esc(dlinks.detail||'')+'" data-label="出玉詳細"'+((entry.siteType==='daidata'||entry.siteType==='teramoba')?' data-direct="1"':'')+'>詳細</button>'+
           historyBtn+
           suiiBtn+
         '</div>'+
