@@ -97,11 +97,11 @@
   }
 
   // ================= テラモバ =================
-  // 表示中のページを読むだけで、サイトへの追加アクセスはしない
+  // 表示中のページを読むだけ。ページ移動は自分でボタンを押したときだけ
   async function teramoba() {
     const seg = location.pathname.split('/').filter(Boolean)[0] || '';
     const hallId = host + (seg ? '/' + seg : '');
-    const HK = 'tm_hall_' + hallId, MK = 'tm_models_' + hallId;
+    const HK = 'tm_hall_' + hallId, MK = 'tm_models_' + hallId, QK = 'tm_q_' + hallId;
 
     let hallName = localStorage.getItem(HK);
     if (!hallName) {
@@ -112,34 +112,77 @@
     let counts = {};
     try { counts = JSON.parse(localStorage.getItem(MK) || '{}'); } catch (e) {}
 
+    // 今日の巡回リスト
+    const today = new Date().toDateString();
+    let q = {};
+    try { q = JSON.parse(localStorage.getItem(QK) || '{}'); } catch (e) {}
+    if (q.date !== today) q = { date: today, list: [], done: {}, listUrl: '' };
+    const saveQ = () => localStorage.setItem(QK, JSON.stringify(q));
+
+    const toast = (msg, ms) => new Promise(res => {
+      const d = document.createElement('div');
+      d.textContent = msg;
+      d.style.cssText = 'position:fixed;top:20px;left:10px;right:10px;z-index:99999;background:rgb(34,34,34);color:white;padding:12px;font-size:15px;border-radius:8px;text-align:center;opacity:.95;';
+      document.body.appendChild(d);
+      setTimeout(() => { d.remove(); res(); }, ms);
+    });
+
     const listTbl = document.querySelector('table.machinelist');
     const standTbl = document.querySelector('#standlist table.standlist');
 
-    // ---- 機種一覧ページ ----
+    // ---------- 機種一覧ページ ----------
     if (listTbl) {
       const rows = [...listTbl.querySelectorAll('tbody tr')].map(tr => {
         const a = tr.querySelector('td.wrap-machine-name a');
         const c = tr.querySelector('td.space-right');
-        return a ? { name: a.textContent.trim(), cnt: parseInt(c ? c.textContent : '', 10) || 0 } : null;
+        return a ? { tr, name: a.textContent.trim(), cnt: parseInt(c ? c.textContent : '', 10) || 0 } : null;
       }).filter(Boolean);
       if (!rows.length) { alert('機種が見つかりません'); return; }
+
+      const openRow = async (name, pos, total) => {
+        const r = rows.find(x => x.name === name);
+        if (!r) { alert(name + '\nが一覧に見つからないため、スキップします'); q.done[name] = 'skip'; saveQ(); return; }
+        q.listUrl = location.href; saveQ();
+        await toast('(' + pos + '/' + total + ') ' + name + ' を開きます', 600);
+        r.tr.click();
+      };
+
+      // 巡回中なら次の機種へ
+      const pending = q.list.filter(n => !q.done[n]);
+      if (q.list.length && pending.length) {
+        const pos = q.list.length - pending.length + 1;
+        if (confirm('(' + pos + '/' + q.list.length + ') 次の機種\n' + pending[0] + '\n\nOK = 開く\nキャンセル = 最初からやり直す・機種の再チェック')) {
+          await openRow(pending[0], pos, q.list.length);
+          return;
+        }
+      } else if (q.list.length) {
+        alert('本日の' + q.list.length + '機種はすべて完了しています。\n「メモを再生成」でメモを作ってください。');
+      }
+
+      // 機種の登録・チェック
       rows.forEach(r => { counts[r.name] = r.cnt; });
       localStorage.setItem(MK, JSON.stringify(counts));
       const names = rows.map(r => r.name);
-
       const plan = await post({ action: 'plan', site: 'テラモバ', hallId, hallName, models: names });
       const chk = await post({ action: 'listcheck', hallId, models: names });
       const todo = chk.items.filter(i => i.abbr && !i.ex && i.saved === 0).map(i => i.name);
       const diff = chk.items.filter(i => i.saved > 0 && i.saved !== counts[i.name])
         .map(i => i.name + ': 表示' + counts[i.name] + '台/保存' + i.saved + '台');
+      const list = chk.items.filter(i => !i.ex).map(i => i.name);
+      const exN = chk.items.length - list.length;
 
-      alert(hallName + '\n' + names.length + '機種を確認しました\n(新規登録' + plan.added + '件 / うち略称を自動補完' + plan.filled + '件)' +
-        (todo.length ? '\n\n▼台番未取得(略称あり)\n' + todo.join('\n') : '\n\n台番未取得の機種はありません') +
-        (diff.length ? '\n\n▼台数不一致\n' + diff.join('\n') : ''));
+      q = { date: today, list, done: {}, listUrl: location.href };
+      saveQ();
+
+      const msg = hallName + '\n' + names.length + '機種を確認しました\n(新規登録' + plan.added + '件 / うち略称を自動補完' + plan.filled + '件)' +
+        (todo.length ? '\n\n▼台番未取得(略称あり)\n' + todo.join('\n') : '') +
+        (diff.length ? '\n\n▼台数不一致\n' + diff.join('\n') : '') +
+        '\n\n' + list.length + '機種を順番に回ります(除外' + exN + '機種)。\n最初の機種を開きますか?';
+      if (confirm(msg) && list.length) await openRow(list[0], 1, list.length);
       return;
     }
 
-    // ---- 台番一覧ページ ----
+    // ---------- 台番一覧ページ ----------
     if (standTbl) {
       const nos = [...new Set([...standTbl.querySelectorAll('tbody td.sticky-column a')]
         .map(a => parseInt(a.textContent, 10)).filter(n => n > 0))];
@@ -158,9 +201,18 @@
       await post({ action: 'save', hallId, hallName, name, nos });
       await post({ action: 'finish', hallId });
 
+      if (q.list.includes(name)) q.done[name] = 1;
+      saveQ();
+      const doneN = q.list.filter(n => q.done[n]).length;
+
       const exp = counts[name];
-      alert(name + '\n' + nos.length + '台を保存しました(' + nos[0] + '〜' + nos[nos.length - 1] + ')' +
-        (exp && exp !== nos.length ? '\n\n※機種一覧の表示は' + exp + '台です' : ''));
+      if (exp && exp !== nos.length) {
+        alert(name + '\n' + nos.length + '台を保存しました\n\n※機種一覧の表示は' + exp + '台です。確認してください');
+      } else {
+        await toast(name + '  ' + nos.length + '台を保存' + (q.list.length ? ' (' + doneN + '/' + q.list.length + ')' : ''), 1200);
+      }
+      if (q.listUrl) location.href = q.listUrl;
+      else history.back();
       return;
     }
 
