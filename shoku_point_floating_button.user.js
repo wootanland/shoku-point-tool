@@ -51,12 +51,12 @@
     const cbName = 'jsonp_cb_' + Math.random().toString(36).slice(2);
     const script = document.createElement('script');
     let done = false;
-    window[cbName] = function (d) {
+    window[cbName] = function () {
       if (done) return;
       done = true;
       delete window[cbName];
       if (script.parentNode) script.parentNode.removeChild(script);
-      if (d && d.error) { clearApiKey(); cb(false); } else { cb(true); }
+      cb(true);
     };
     script.onerror = function () {
       if (done) return;
@@ -78,31 +78,11 @@
     }, 8000);
   }
 
-  // 管理用キー(Apps Scriptの API_KEY と同じもの)。初回だけ入力して、このサイトの端末内に保存する
-  function getApiKey() {
-    let k = '';
-    try { k = localStorage.getItem('shokuApiKey') || ''; } catch (e) {}
-    if (!k) {
-      k = (prompt('管理用キーを入力してください') || '').trim();
-      if (k) { try { localStorage.setItem('shokuApiKey', k); } catch (e) {} }
-    }
-    return k;
-  }
-
-  function clearApiKey() {
-    try { localStorage.removeItem('shokuApiKey'); } catch (e) {}
-  }
-
   function sendToApi(action, payload, cb) {
-    const key = getApiKey();
-    const data = JSON.stringify(payload);
-    const qs = 'action=' + action + '&key=' + encodeURIComponent(key) + '&data=' + encodeURIComponent(data);
+    const qs = 'action=' + action + '&data=' + encodeURIComponent(JSON.stringify(payload));
     fetch(API_URL + '?' + qs, { method: 'GET' })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d && d.error) { clearApiKey(); cb(false); } else { cb(true); }
-      })
-      .catch(function () { jsonp(API_URL, { action: action, key: key, data: data }, cb); });
+      .then(function (r) { cb(r.ok); })
+      .catch(function () { jsonp(API_URL, { action: action, data: JSON.stringify(payload) }, cb); });
   }
 
   // ---- 喰ポイント・差枚 判定ロジック（両サイト共通） ----------------------
@@ -118,6 +98,10 @@
     function Bat(i) { return (i >= 0 && i < n) ? Braw[i] : 0; }
     function Cat(i) { return (i >= 0 && i < n) ? Craw[i] : 0; }
 
+    // エピソードボーナス(EP)告知の獲得枚数。EPは100枚獲得まで継続するため97〜108枚あたり。
+    // ずれる台が見つかったらここの数字だけ変えれば、解放判定・EP抜け判定の両方に反映される
+    const EP_MIN = 97, EP_MAX = 108;
+
     for (let i = 0; i < n; i++) {
       G[i] = (Aat(i) === 'RB' && (Aat(i - 1) === 'RB' || Aat(i - 1) === '' || (Aat(i - 1) === 'ART' && Bat(i - 1) >= 3))) ? 1 : 0;
       H[i] = ((Aat(i + 1) === 'RB' || Aat(i + 1) === '') && Aat(i) === 'ART' && Bat(i) <= 1 &&
@@ -131,17 +115,18 @@
     const releaseK = Array(n).fill(0);
     for (let i = 0; i < n; i++) {
       const olderIsArt = Aat(i + 1) === 'ART';
-      const olderIsEP = olderIsArt && Bat(i + 1) >= 3 && Cat(i + 1) >= 90 && Cat(i + 1) <= 110;
+      const olderIsEP = olderIsArt && Bat(i + 1) >= 3 && Cat(i + 1) >= EP_MIN && Cat(i + 1) <= EP_MAX;
       const isInitialHit = (!olderIsArt) || Bat(i) > 2 || olderIsEP;
       releaseK[i] = (Aat(i) === 'ART' && Cat(i) <= 70 && Aat(i - 1) === 'ART' && isInitialHit) ? 1 : 0;
     }
 
-    // EP抜け（EP告知の手前は本当にRBか空＝有利区間の切れ目である場合のみ。
-    // AT継続中の一撃（ART・3G以上）まで含めると、まだ継続中のAT内の一撃を
-    // 誤って「EP告知」と誤認してしまうため対象外にする）
+    // EP抜け：EP告知(ART・3G以上・97〜108枚)の次が「ART・1G」で、その次(さらに新しい側)が
+    // RB/空/3G以上のART(＝AT直撃で次の初当りに切り替わった)なら、1G側の行に1pt。
+    // 獲得枚数を97〜108枚に限定するのは、70枚以下のART(初当り＝解放行)など
+    // EP告知ではない行を取り違えて、連チャン側に誤加点しないため。
     for (let i = 0; i < n; i++) {
-      if (Aat(i) === 'ART' && Bat(i) >= 3 && Cat(i) <= 120 && Aat(i - 1) === 'ART' && Bat(i - 1) === 1 &&
-          (Aat(i - 2) === 'RB' || Aat(i - 2) === '')) J[i - 1] = 1;
+      if (Aat(i) === 'ART' && Bat(i) >= 3 && Cat(i) >= EP_MIN && Cat(i) <= EP_MAX && Aat(i - 1) === 'ART' && Bat(i - 1) === 1 &&
+          (Aat(i - 2) === 'RB' || Aat(i - 2) === '' || (Aat(i - 2) === 'ART' && Bat(i - 2) >= 3))) J[i - 1] = 1;
     }
 
     // 強制リセット（有馬ジャッジメント成功）：ART・3G以上・獲得0枚以下
@@ -261,7 +246,7 @@
 
     showToast('現在の喰ポイント：' + currentPT + 'pt', true);
     sendToApi('upsert', toolPayload, function (ok) {
-      if (!ok) showToast('⚠️ツールへの送信に失敗しました(キーが違う場合は、もう一度押すとキーを聞かれます)', false);
+      if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
     });
   }
 
@@ -347,7 +332,7 @@
       };
 
       sendToApi('upsert', toolPayload, function (ok) {
-        if (!ok) showToast('⚠️ツールへの送信に失敗しました(キーが違う場合は、もう一度押すとキーを聞かれます)', false);
+        if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
       });
     }
 
@@ -432,7 +417,7 @@
       };
 
       sendToApi('upsert', toolPayload, function (ok) {
-        if (!ok) showToast('⚠️ツールへの送信に失敗しました(キーが違う場合は、もう一度押すとキーを聞かれます)', false);
+        if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
       });
     }
 
@@ -504,8 +489,7 @@
     if (topControl) {
       const rect = topControl.getBoundingClientRect();
       btn.style.right = '5px';
-      // ボタン1つ分(54px)+すき間(8px)だけ、さらに上に上げる(下端のUIと重ならないように)
-      btn.style.bottom = (Math.max(8, window.innerHeight - rect.top + 8) + 62) + 'px';
+      btn.style.bottom = Math.max(8, window.innerHeight - rect.top + 65) + 'px';
       btn.style.width = '54px';
       btn.style.height = '54px';
       btn.style.borderRadius = '50%';
