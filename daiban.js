@@ -1,15 +1,22 @@
 (async () => {
   const GAS = window.DAIBAN_GAS;
   if (!GAS) { alert('GASのURLが設定されていません'); return; }
-  const post = async b => {
-    const r = await fetch(GAS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(b),
-    });
-    const j = await r.json();
-    if (j.error) throw new Error(j.error);
-    return j;
+  const post = async (b, tries = 3) => {
+    for (let i = 0; ; i++) {
+      try {
+        const r = await fetch(GAS, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(b),
+        });
+        const j = await r.json();
+        if (j.error) throw new Error(j.error);
+        return j;
+      } catch (e) {
+        if (i >= tries - 1) throw e;
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
   };
   const BOX_CSS = 'position:fixed;top:20px;left:10px;right:10px;' +
     'z-index:99999;background:rgb(34,34,34);color:white;' +
@@ -184,7 +191,7 @@
     const MK = 'tm_models_' + hallId;
     const QK = 'tm_q_' + hallId;
 
-        let hallName = localStorage.getItem(HK) || '';
+    let hallName = localStorage.getItem(HK) || '';
     let counts = null, q = null;
     try { counts = JSON.parse(localStorage.getItem(MK) || 'null'); } catch (e) {}
     try { q = JSON.parse(localStorage.getItem(QK) || 'null'); } catch (e) {}
@@ -216,8 +223,6 @@
     }
     const saveQ = () => localStorage.setItem(QK, JSON.stringify(q));
     saveQ();
-    }
-    const saveQ = () => localStorage.setItem(QK, JSON.stringify(q));
 
     const toast = (msg, ms) => new Promise(res => {
       const d = document.createElement('div');
@@ -255,7 +260,7 @@
         r.tr.click();
       };
 
-            // 巡回中なら次の機種へ(リセット用ブックマークレットのときは再チェック)
+      // 巡回中なら次の機種へ(リセット用ブックマークレットのときは再チェック)
       const reset = window.DAIBAN_MODE === 'reset';
       window.DAIBAN_MODE = '';
       const pending = q.list.filter(n => !q.done[n]);
@@ -295,7 +300,7 @@
       const list = chk.items.filter(i => !i.ex).map(i => i.name);
       const exN = chk.items.length - list.length;
 
-            // 今日取得済みの機種は進み具合を残す
+      // 今日取得済みの機種は進み具合を残す
       q = { date: today, list, done: q.done || {}, listUrl: location.href };
       saveQ();
       await post({
