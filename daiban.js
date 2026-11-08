@@ -239,29 +239,27 @@
         r.tr.click();
       };
 
-      // 巡回中なら次の機種へ
+            // 巡回中なら次の機種へ(リセット用ブックマークレットのときは再チェック)
+      const reset = window.DAIBAN_MODE === 'reset';
+      window.DAIBAN_MODE = '';
       const pending = q.list.filter(n => !q.done[n]);
-      if (q.list.length && pending.length) {
+      if (!reset && q.list.length && pending.length) {
         // 取得済みを薄く、次の機種を枠で囲んでスクロール
         rows.forEach(r => { if (q.done[r.name]) r.tr.style.opacity = '0.4'; });
         const nextRow = rows.find(x => x.name === pending[0]);
         if (nextRow) {
           nextRow.tr.style.outline = '3px solid orange';
           nextRow.tr.scrollIntoView({ block: 'center' });
-          await new Promise(r => setTimeout(r, 150));
         }
         const pos = q.list.length - pending.length + 1;
-        const ask = '(' + pos + '/' + q.list.length + ') 次の機種\n' +
-          pending[0] + '\n\n' +
-          'OK = 開く\n' +
-          'キャンセル = 最初からやり直す・機種の再チェック';
-        if (confirm(ask)) {
-          await openRow(pending[0], pos, q.list.length);
-          return;
-        }
-      } else if (q.list.length) {
+        await openRow(pending[0], pos, q.list.length);
+        return;
+      }
+      if (!reset && q.list.length) {
         alert('本日の' + q.list.length + '機種はすべて完了しています。\n' +
-          '「メモを再生成」でメモを作ってください。');
+          '「メモを再生成」でメモを作ってください。\n' +
+          '(やり直す場合はリセット用ブックマークレットを押してください)');
+        return;
       }
 
       // 機種の登録・チェック
