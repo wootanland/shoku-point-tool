@@ -184,22 +184,38 @@
     const MK = 'tm_models_' + hallId;
     const QK = 'tm_q_' + hallId;
 
-    let hallName = localStorage.getItem(HK);
+        let hallName = localStorage.getItem(HK) || '';
+    let counts = null, q = null;
+    try { counts = JSON.parse(localStorage.getItem(MK) || 'null'); } catch (e) {}
+    try { q = JSON.parse(localStorage.getItem(QK) || 'null'); } catch (e) {}
+
+    // ブラウザの保存領域が消されていたらGASから復元
+    if (!hallName || !counts || !q) {
+      try {
+        const s = await post({ action: 'tmget', hallId });
+        if (s.meta) {
+          hallName = hallName || s.meta.hallName || '';
+          counts = counts || s.meta.counts || null;
+        }
+        if (!q && s.q) q = Object.assign({ listUrl: '' }, s.q);
+      } catch (e) {}
+    }
     if (!hallName) {
       const ans = prompt('このホールの名前を入力してください(初回のみ)');
       hallName = (ans || '').trim();
       if (!hallName) return;
-      localStorage.setItem(HK, hallName);
     }
-    let counts = {};
-    try { counts = JSON.parse(localStorage.getItem(MK) || '{}'); } catch (e) {}
+    counts = counts || {};
+    localStorage.setItem(HK, hallName);
+    localStorage.setItem(MK, JSON.stringify(counts));
 
     // 今日の巡回リスト
     const today = new Date().toDateString();
-    let q = {};
-    try { q = JSON.parse(localStorage.getItem(QK) || '{}'); } catch (e) {}
-    if (q.date !== today) {
+    if (!q || q.date !== today) {
       q = { date: today, list: [], done: {}, listUrl: '' };
+    }
+    const saveQ = () => localStorage.setItem(QK, JSON.stringify(q));
+    saveQ();
     }
     const saveQ = () => localStorage.setItem(QK, JSON.stringify(q));
 
@@ -282,6 +298,11 @@
             // 今日取得済みの機種は進み具合を残す
       q = { date: today, list, done: q.done || {}, listUrl: location.href };
       saveQ();
+      await post({
+        action: 'tmset', hallId,
+        meta: { hallName, counts },
+        q: { date: q.date, list: q.list, done: q.done },
+      });
       const rest = list.filter(n => !q.done[n]);
 
       let msg = hallName + '\n' +
@@ -336,7 +357,10 @@
             action: 'plan', site: 'テラモバ', hallId, hallName, models: [name],
           });
         }
-        await post({ action: 'save', hallId, hallName, name, nos });
+        await post({
+          action: 'save', hallId, hallName, name, nos,
+          tmDone: q.list.includes(name), tmDate: today,
+        });
       } catch (e) {
         box.remove();
         alert('保存に失敗しました: ' + e.message);
