@@ -279,8 +279,10 @@
       const list = chk.items.filter(i => !i.ex).map(i => i.name);
       const exN = chk.items.length - list.length;
 
-      q = { date: today, list, done: {}, listUrl: location.href };
+            // 今日取得済みの機種は進み具合を残す
+      q = { date: today, list, done: q.done || {}, listUrl: location.href };
       saveQ();
+      const rest = list.filter(n => !q.done[n]);
 
       let msg = hallName + '\n' +
         names.length + '機種を確認しました\n' +
@@ -289,8 +291,11 @@
       if (todo.length) msg += '\n\n▼台番未取得(略称あり)\n' + todo.join('\n');
       if (diff.length) msg += '\n\n▼台数不一致\n' + diff.join('\n');
       msg += '\n\n' + list.length + '機種を順番に回ります' +
-        '(除外' + exN + '機種)。\n最初の機種を開きますか?';
-      if (confirm(msg) && list.length) await openRow(list[0], 1, list.length);
+        '(除外' + exN + '機種 / 残り' + rest.length + '機種)。\n' +
+        '次の機種を開きますか?';
+      if (confirm(msg) && rest.length) {
+        await openRow(rest[0], list.length - rest.length + 1, list.length);
+      }
       return;
     }
 
