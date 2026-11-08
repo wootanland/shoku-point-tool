@@ -1,7 +1,7 @@
 (async () => {
   const GAS = window.DAIBAN_GAS;
   if (!GAS) { alert('GASのURLが設定されていません'); return; }
-  const MIN = 4000, MAX = 8000;
+  const MIN = 8000, MAX = 15000;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const post = async b => {
     const r = await fetch(GAS, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(b) });
