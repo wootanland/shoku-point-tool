@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         喰ポイント取得ボタン（サイトセブン / 台データオンライン）
 // @namespace    wootanland.shoku-point-tool
-// @version      1.9
+// @version      2.0
 // @description  ページ右下に喰ポイント取得ボタンを表示し、タップで現在の喰ポイントを計算してツールに送信します
 // @match        https://*.site777.jp/f/D3100.do*
 // @match        https://daidata.goraggio.com/*/detail*
@@ -276,8 +276,7 @@
 
     showToast('現在の喰ポイント：' + currentPT + 'pt', true);
     sendToApi('upsert', toolPayload, function (ok, msg) {
-      if (ok) showToast('✅ツールに登録しました', true);
-      else showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
+      if (!ok) showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
     });
   }
 
@@ -363,8 +362,7 @@
       };
 
       sendToApi('upsert', toolPayload, function (ok, msg) {
-        if (ok) showToast('✅ツールに登録しました', true);
-        else showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
+        if (!ok) showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
       });
     }
 
@@ -449,8 +447,7 @@
       };
 
       sendToApi('upsert', toolPayload, function (ok, msg) {
-        if (ok) showToast('✅ツールに登録しました', true);
-        else showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
+        if (!ok) showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
       });
     }
 
@@ -529,7 +526,7 @@
       btn.style.fontSize = '11px';
     } else {
       btn.style.right = '16px';
-      btn.style.bottom = '16px';
+      btn.style.bottom = '90px'; // ボタン1個分上（58px＋余白）
       btn.style.width = '58px';
       btn.style.height = '58px';
       btn.style.borderRadius = '50%';
