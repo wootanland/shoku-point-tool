@@ -1,12 +1,18 @@
 // ==UserScript==
 // @name         喰ポイント取得ボタン（サイトセブン / 台データオンライン）
 // @namespace    wootanland.shoku-point-tool
-// @version      1.8
+// @version      1.9
 // @description  ページ右下に喰ポイント取得ボタンを表示し、タップで現在の喰ポイントを計算してツールに送信します
 // @match        https://*.site777.jp/f/D3100.do*
 // @match        https://daidata.goraggio.com/*/detail*
 // @match        https://*.pt.teramoba2.com/*/standgraph*
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
+// @grant        GM_registerMenuCommand
+// @grant        unsafeWindow
+// @connect      script.google.com
+// @connect      script.googleusercontent.com
 // @run-at       document-idle
 // @updateURL    https://wootanland.github.io/shoku-point-tool/shoku_point_floating_button.user.js
 // @downloadURL  https://wootanland.github.io/shoku-point-tool/shoku_point_floating_button.user.js
@@ -47,42 +53,66 @@
     setTimeout(function () { t.remove(); }, 4000);
   }
 
-  function jsonp(url, params, cb) {
-    const cbName = 'jsonp_cb_' + Math.random().toString(36).slice(2);
-    const script = document.createElement('script');
-    let done = false;
-    window[cbName] = function () {
-      if (done) return;
-      done = true;
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
-      cb(true);
-    };
-    script.onerror = function () {
-      if (done) return;
-      done = true;
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
-      cb(false);
-    };
-    const qs = Object.keys(params).map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
-    script.src = url + '?' + qs + '&callback=' + cbName;
-    document.body.appendChild(script);
-    setTimeout(function () {
-      if (!done) {
-        done = true;
-        delete window[cbName];
-        if (script.parentNode) script.parentNode.removeChild(script);
-        cb(false);
-      }
-    }, 8000);
+  // サイト側のページ変数（dataLayer / jQuery）を参照するための窓口
+  const pageWin = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+
+  // ---- 合言葉（APIキー）：Tampermonkeyの保存領域にだけ保存（サイト側からは読めない） ----
+  const API_KEY_NAME = 'apiKey';
+  function getApiKey() { return GM_getValue(API_KEY_NAME, '') || ''; }
+  function setApiKey(v) { GM_setValue(API_KEY_NAME, v || ''); }
+  function askApiKey(message) {
+    const v = window.prompt(message || '喰ポイントツールの合言葉（APIキー）を入力してください', '');
+    const key = (v || '').trim();
+    if (key) setApiKey(key);
+    return key;
+  }
+  if (typeof GM_registerMenuCommand === 'function') {
+    GM_registerMenuCommand('合言葉を設定し直す', function () {
+      if (askApiKey()) showToast('合言葉を保存しました', true);
+    });
   }
 
-  function sendToApi(action, payload, cb) {
-    const qs = 'action=' + action + '&data=' + encodeURIComponent(JSON.stringify(payload));
-    fetch(API_URL + '?' + qs, { method: 'GET' })
-      .then(function (r) { cb(r.ok); })
-      .catch(function () { jsonp(API_URL, { action: action, data: JSON.stringify(payload) }, cb); });
+  // GETで送り、返ってきた中身（JSON）を見て成否を判定する
+  function httpGet(url, cb) {
+    if (typeof GM_xmlhttpRequest === 'function') {
+      GM_xmlhttpRequest({
+        method: 'GET', url: url, timeout: 20000,
+        onload: function (r) {
+          let data = null;
+          try { data = JSON.parse(r.responseText); } catch (e) { }
+          cb(r.status >= 200 && r.status < 300, data, r.status);
+        },
+        onerror: function () { cb(false, null, 0); },
+        ontimeout: function () { cb(false, null, 0); }
+      });
+    } else {
+      fetch(url, { method: 'GET' })
+        .then(function (r) { return r.text().then(function (t) { let d = null; try { d = JSON.parse(t); } catch (e) { } cb(r.ok, d, r.status); }); })
+        .catch(function () { cb(false, null, 0); });
+    }
+  }
+
+  // cb(ok, message)
+  function sendToApi(action, payload, cb, retried) {
+    let key = getApiKey();
+    if (!key) key = askApiKey();
+    if (!key) { cb(false, '合言葉が未設定です'); return; }
+    const url = API_URL + '?action=' + action + '&key=' + encodeURIComponent(key) +
+      '&data=' + encodeURIComponent(JSON.stringify(payload));
+    httpGet(url, function (ok, data, status) {
+      if (data && data.error === 'unauthorized') {
+        setApiKey('');
+        if (!retried && askApiKey('合言葉が違うようです。もう一度入力してください')) {
+          sendToApi(action, payload, cb, true);
+        } else {
+          cb(false, '合言葉が違います');
+        }
+        return;
+      }
+      if (!ok) { cb(false, '通信エラー（' + status + '）'); return; }
+      if (data && data.error) { cb(false, 'サーバーエラー：' + data.error); return; }
+      cb(true, '');
+    });
   }
 
   // ---- 喰ポイント・差枚 判定ロジック（両サイト共通） ----------------------
@@ -170,8 +200,8 @@
   function runSite7() {
     function getMeta() {
       const meta = { hallName: '', modelName: '', prefecture: '', city: '' };
-      if (window.dataLayer) {
-        for (const e of dataLayer) {
+      if (pageWin.dataLayer) {
+        for (const e of pageWin.dataLayer) {
           if (e && e.hall_name) {
             meta.hallName = e.hall_name;
             meta.modelName = e.model_name;
@@ -245,8 +275,9 @@
     };
 
     showToast('現在の喰ポイント：' + currentPT + 'pt', true);
-    sendToApi('upsert', toolPayload, function (ok) {
-      if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
+    sendToApi('upsert', toolPayload, function (ok, msg) {
+      if (ok) showToast('✅ツールに登録しました', true);
+      else showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
     });
   }
 
@@ -331,15 +362,16 @@
         rows: rows.map(function (r, i) { return { cnt: r.cnt, kind: r.kind, game: r.game, getRaw: r.getRaw, E: calc.E[i], F: calc.F[i], ZD: calc.ZD[i] }; })
       };
 
-      sendToApi('upsert', toolPayload, function (ok) {
-        if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
+      sendToApi('upsert', toolPayload, function (ok, msg) {
+        if (ok) showToast('✅ツールに登録しました', true);
+        else showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
       });
     }
 
     function ensureListView(cb) {
       const btn = document.querySelector('button[data-target="list"]');
       if (btn && !btn.classList.contains('active')) {
-        if (window.jQuery) { window.jQuery(btn).trigger('click'); }
+        if (pageWin.jQuery) { pageWin.jQuery(btn).trigger('click'); }
         btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
         btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
         btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
@@ -416,8 +448,9 @@
         rows: rows.map(function (r, i) { return { cnt: r.cnt, kind: r.kind, game: r.game, getRaw: r.getRaw, E: calc.E[i], F: calc.F[i], ZD: calc.ZD[i] }; })
       };
 
-      sendToApi('upsert', toolPayload, function (ok) {
-        if (!ok) showToast('⚠️ツールへの送信に失敗しました', false);
+      sendToApi('upsert', toolPayload, function (ok, msg) {
+        if (ok) showToast('✅ツールに登録しました', true);
+        else showToast('⚠️ツールへの送信に失敗しました：' + msg, false);
       });
     }
 
